@@ -1,0 +1,19 @@
+[package]
+name = "neco-filetree"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Pure file tree snapshot helpers for merge, flatten, reveal, and lookup"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-filetree"
+keywords = ["filetree", "tree", "workspace", "flatten", "reveal"]
+categories = ["filesystem", "algorithms", "data-structures"]
+exclude = ["workspace.kdl"]
+
+[features]
+default = []
+
+[dependencies]
+neco-pathrel = { version = "0.1.0", path = "../neco-pathrel" }

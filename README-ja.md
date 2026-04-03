@@ -54,6 +54,15 @@
 |---|---|---|---|
 | [`neco-fuzzy`](./neco-fuzzy) | コマンド、パス、短い識別子向けの最小 fuzzy スコアコア | なし | なし |
 
+### ランタイム基盤
+
+| crate | 概要 | 内部依存 | 主な外部依存 |
+|---|---|---|---|
+| [`neco-pathrel`](./neco-pathrel) | パス関係判定と名前変更追従の補助 | なし | なし |
+| [`neco-filetree`](./neco-filetree) | ファイルツリーの探索、差し替え、平坦化、展開計画の補助 | `neco-pathrel` | なし |
+| [`neco-textpatch`](./neco-textpatch) | 小さな構造化テキスト更新向けの決定的パッチ補助 | なし | なし |
+| [`neco-watchnorm`](./neco-watchnorm) | ファイル監視イベントの正規化と一括統合 | なし | なし |
+
 ### 暗号処理
 
 | crate | 概要 | 内部依存 | 主な外部依存 |

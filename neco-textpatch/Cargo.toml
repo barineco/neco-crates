@@ -1,0 +1,15 @@
+[package]
+name = "neco-textpatch"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Deterministic text patch helpers for narrow structured edits"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-textpatch"
+keywords = ["text", "patch", "edit", "config", "rewrite"]
+categories = ["text-processing", "algorithms"]
+
+[lib]
+path = "src/lib.rs"

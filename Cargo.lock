@@ -1017,6 +1017,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-filetree"
+version = "0.1.0"
+dependencies = [
+ "neco-pathrel",
+]
+
+[[package]]
 name = "neco-fuzzy"
 version = "0.1.0"
 dependencies = [
@@ -1085,6 +1092,10 @@ dependencies = [
  "criterion",
  "nalgebra",
 ]
+
+[[package]]
+name = "neco-pathrel"
+version = "0.1.0"
 
 [[package]]
 name = "neco-pigment"
@@ -1161,6 +1172,10 @@ name = "neco-stl"
 version = "0.1.0"
 
 [[package]]
+name = "neco-textpatch"
+version = "0.1.0"
+
+[[package]]
 name = "neco-vault"
 version = "0.1.0"
 dependencies = [
@@ -1186,6 +1201,10 @@ dependencies = [
  "neco-view2d",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "neco-watchnorm"
+version = "0.1.0"
 
 [[package]]
 name = "nu-ansi-term"
