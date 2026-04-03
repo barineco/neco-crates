@@ -56,15 +56,6 @@ External dependencies list always-on dependencies first, with optional ones grou
 |---|---|---|---|
 | [`neco-fuzzy`](./neco-fuzzy) | minimal fuzzy score core for commands, paths, and short identifiers | none | none |
 
-### Runtime Primitives
-
-| Crate | Summary | Internal dependencies | Main external dependencies |
-|---|---|---|---|
-| [`neco-pathrel`](./neco-pathrel) | string-based path relation and rename remap helpers | none | none |
-| [`neco-filetree`](./neco-filetree) | pure file tree lookup, merge, flatten, and reveal helpers | `neco-pathrel` | none |
-| [`neco-textpatch`](./neco-textpatch) | deterministic narrow text patch helpers for small structured edits | none | none |
-| [`neco-watchnorm`](./neco-watchnorm) | host-agnostic file watcher event normalization and batch coalescing | none | none |
-
 ### Cryptography
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
