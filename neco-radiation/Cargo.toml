@@ -1,0 +1,19 @@
+[package]
+name = "neco-radiation"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Acoustic radiation power estimators for vibrating surfaces"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-radiation"
+keywords = ["acoustics", "radiation", "rayleigh", "modal", "plate"]
+categories = ["mathematics", "science", "algorithms"]
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }

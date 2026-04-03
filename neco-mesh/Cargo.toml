@@ -1,0 +1,28 @@
+[package]
+name = "neco-mesh"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "1D/2D/3D mesh and voxel discretization primitives"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-mesh"
+keywords = ["mesh", "voxel", "geometry", "tetrahedral", "grid"]
+categories = ["graphics", "mathematics", "algorithms"]
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+neco-cdt = { version = "0.1.0", path = "../neco-cdt" }
+neco-nurbs = { version = "0.1.0", path = "../neco-nurbs" }
+neco-stl = { version = "0.1.0", path = "../neco-stl" }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+approx = "0.5"
+
+[lib]
+path = "src/lib.rs"

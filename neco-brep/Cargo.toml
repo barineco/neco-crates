@@ -1,0 +1,20 @@
+[package]
+name = "neco-brep"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Analytical B-Rep engine with boolean operations"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-brep"
+keywords = ["brep", "csg", "cad", "geometry", "boolean"]
+categories = ["graphics", "mathematics", "algorithms"]
+exclude = ["settings.kdl"]
+
+[dependencies]
+neco-nurbs = { version = "0.1.0", path = "../neco-nurbs", features = ["fitting"] }
+neco-cdt = { version = "0.1.0", path = "../neco-cdt" }
+
+[dev-dependencies]
+approx = "0.5"

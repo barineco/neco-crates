@@ -1,0 +1,15 @@
+[package]
+name = "neco-stl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "STL file parser and writer with vertex deduplication"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-stl"
+keywords = ["stl", "mesh", "cad", "geometry"]
+categories = ["graphics", "parser-implementations"]
+
+[lib]
+path = "src/lib.rs"

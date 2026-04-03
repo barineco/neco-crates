@@ -1,0 +1,15 @@
+[package]
+name = "neco-sparse"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Lightweight COO / CSR sparse matrix types"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-sparse"
+keywords = ["sparse", "matrix", "csr", "coo"]
+categories = ["data-structures", "mathematics", "science"]
+
+[lib]
+path = "src/lib.rs"

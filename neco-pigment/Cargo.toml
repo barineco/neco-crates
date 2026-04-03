@@ -1,0 +1,19 @@
+[package]
+name = "neco-pigment"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Kubelka-Munk spectral mixing for physically-based paint color blending"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-pigment"
+keywords = ["color", "pigment", "spectral", "paint"]
+categories = ["graphics", "multimedia::images", "science"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neco-color = { version = "0.1.0", path = "../neco-color" }
+serde = { version = "1", features = ["derive"], optional = true }

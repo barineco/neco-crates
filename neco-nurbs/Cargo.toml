@@ -1,0 +1,31 @@
+[package]
+name = "neco-nurbs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "2D rational NURBS curves and region representation"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-nurbs"
+keywords = ["nurbs", "cad", "geometry", "curve", "spline"]
+categories = ["graphics", "mathematics"]
+
+[dependencies]
+nalgebra = { version = "0.33", optional = true }
+
+[features]
+default = []
+polynomial-highorder = ["dep:nalgebra"]
+fitting = ["dep:nalgebra"]
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.5", default-features = false }
+
+[lib]
+path = "src/lib.rs"
+
+[[bench]]
+name = "nurbs_bench"
+harness = false

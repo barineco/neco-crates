@@ -1,0 +1,14 @@
+[package]
+name = "neco-dop853"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Dormand-Prince 8(5,3) adaptive Runge-Kutta integrator"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-dop853"
+keywords = ["ode", "rk", "dop853", "integrator", "numerics"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]

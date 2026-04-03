@@ -1,0 +1,14 @@
+[package]
+name = "neco-complex"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Lightweight complex-number foundation for FFT and solver crates"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-complex"
+keywords = ["complex", "fft", "dsp", "math", "signal"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]

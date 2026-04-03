@@ -1,0 +1,37 @@
+[package]
+name = "neco-secp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Minimal secp256k1 and Nostr signing core"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-secp"
+keywords = ["secp256k1", "schnorr", "nostr", "crypto"]
+categories = ["cryptography"]
+
+[features]
+default = ["nostr"]
+nostr = ["dep:serde_json"]
+batch = []
+nip19 = ["dep:bech32"]
+nip04 = ["dep:aes", "dep:base64", "dep:cbc"]
+nip44 = ["dep:base64", "dep:chacha20", "dep:hkdf", "dep:hmac"]
+serde = ["dep:serde"]
+
+[dependencies]
+aes = { version = "0.8", optional = true }
+base64 = { version = "0.22", optional = true }
+bech32 = { version = "0.9", optional = true }
+cbc = { version = "0.1", optional = true }
+chacha20 = { version = "0.9", optional = true }
+hkdf = { version = "0.12", optional = true }
+hmac = { version = "0.12", optional = true }
+k256 = { version = "0.13", features = ["ecdh", "schnorr"] }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = "0.10"
+
+[lib]
+path = "src/lib.rs"

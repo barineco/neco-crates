@@ -1,0 +1,22 @@
+[package]
+name = "neco-fuzzy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Minimal fuzzy score core for commands, paths, and short identifiers"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-fuzzy"
+keywords = ["fuzzy", "search", "match", "path", "command"]
+categories = ["algorithms", "text-processing"]
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "fuzzy_bench"
+harness = false

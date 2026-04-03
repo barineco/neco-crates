@@ -1,0 +1,16 @@
+[package]
+name = "neco-minphase"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Minimum-phase spectrum and overlap-add convolution kernels"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-minphase"
+keywords = ["minimum-phase", "cepstrum", "convolution", "fft", "dsp"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]
+neco-complex = { version = "0.1", path = "../neco-complex" }
+neco-stft = { version = "0.1", path = "../neco-stft" }

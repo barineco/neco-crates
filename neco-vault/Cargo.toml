@@ -1,0 +1,34 @@
+[package]
+name = "neco-vault"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Memory-only signing vault built on neco-secp"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-vault"
+keywords = ["vault", "signing", "nostr", "crypto"]
+categories = ["cryptography"]
+
+[features]
+default = ["nostr"]
+nostr = ["neco-secp/nostr"]
+nip04 = ["neco-secp/nip04"]
+nip44 = ["neco-secp/nip44"]
+nip17 = ["nip44", "nostr"]
+encrypted = ["dep:aes", "dep:cbc", "dep:getrandom", "dep:scrypt"]
+encrypted-legacy-v1 = ["encrypted", "dep:sha2"]
+security-hardening = ["dep:getrandom"]
+wasm = []
+
+[dependencies]
+neco-secp = { version = "0.1", path = "../neco-secp", default-features = false }
+aes = { version = "0.8", optional = true }
+cbc = { version = "0.1", optional = true }
+sha2 = { version = "0.10", optional = true }
+getrandom = { version = "0.2", optional = true, features = ["js"] }
+scrypt = { version = "0.11", optional = true, default-features = false }
+
+[lib]
+path = "src/lib.rs"

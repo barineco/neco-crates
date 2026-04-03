@@ -1,0 +1,28 @@
+[package]
+name = "neco-kmeans"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "k-means++ clustering for arbitrary-dimensional f64 vectors"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-kmeans"
+keywords = ["kmeans", "clustering", "numerics", "ml"]
+categories = ["algorithms", "science"]
+
+[dependencies]
+rayon = { version = "1", optional = true }
+
+[features]
+parallel = ["rayon"]
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "kmeans_bench"
+harness = false

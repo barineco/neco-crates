@@ -1,0 +1,21 @@
+[package]
+name = "neco-cdt"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "2D Constrained Delaunay Triangulation with exact geometric predicates"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-cdt"
+keywords = ["delaunay", "triangulation", "geometry", "mesh", "cdt"]
+categories = ["algorithms", "graphics", "mathematics"]
+
+[dependencies]
+
+[lib]
+path = "src/lib.rs"
+
+[[bench]]
+name = "build_random_points"
+harness = false

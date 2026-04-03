@@ -1,0 +1,20 @@
+[package]
+name = "neco-gridfield"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Uniform 2D grids and triple-buffered field state"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-gridfield"
+keywords = ["grid", "field", "array", "pde", "simulation"]
+categories = ["mathematics", "science", "algorithms"]
+
+[features]
+default = []
+serde = ["dep:serde", "neco-array2/serde"]
+
+[dependencies]
+neco-array2 = { version = "0.1", path = "../neco-array2", default-features = false }
+serde = { version = "1", features = ["derive"], optional = true }
