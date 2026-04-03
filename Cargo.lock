@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "neco-brep"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "approx",
  "neco-cdt",
@@ -1037,6 +1037,10 @@ dependencies = [
  "neco-array2",
  "serde",
 ]
+
+[[package]]
+name = "neco-json"
+version = "0.1.0"
 
 [[package]]
 name = "neco-kmeans"

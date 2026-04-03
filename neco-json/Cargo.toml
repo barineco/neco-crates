@@ -1,0 +1,14 @@
+[package]
+name = "neco-json"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+description = "Zero-dependency minimal JSON codec for no_std environments"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-json"
+keywords = ["json", "no-std", "parser", "codec", "serialization"]
+categories = ["encoding", "no-std", "parser-implementations"]
+
+[dependencies]

@@ -33,6 +33,7 @@ members = [
     "neco-dop853",
     "neco-stencil",
     "neco-modal",
+    "neco-json",
 ]
 exclude = [
     "demos/cli",
@@ -69,5 +70,6 @@ default-members = [
     "neco-dop853",
     "neco-stencil",
     "neco-modal",
+    "neco-json",
 ]
 resolver = "2"
