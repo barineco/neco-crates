@@ -2,9 +2,19 @@
 
 use core::fmt;
 
+use k256::ecdsa::{
+    signature::hazmat::{
+        PrehashSigner as EcdsaPrehashSigner, PrehashVerifier as EcdsaPrehashVerifier,
+    },
+    Signature as K256EcdsaSignature, SigningKey as EcdsaSigningKey,
+    VerifyingKey as EcdsaVerifyingKey,
+};
 use k256::elliptic_curve::rand_core::OsRng;
+use k256::elliptic_curve::scalar::IsHigh;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
-use k256::schnorr::signature::hazmat::{PrehashSigner, PrehashVerifier};
+use k256::schnorr::signature::hazmat::{
+    PrehashSigner as SchnorrPrehashSigner, PrehashVerifier as SchnorrPrehashVerifier,
+};
 use k256::schnorr::{Signature, SigningKey, VerifyingKey};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -143,16 +153,30 @@ impl SecretKey {
 
     pub fn sign_schnorr_prehash(&self, digest32: [u8; 32]) -> Result<SchnorrSignature, SecpError> {
         let signing_key = self.signing_key()?;
-        let signature = signing_key
-            .sign_prehash(&digest32)
+        let signature = SchnorrPrehashSigner::sign_prehash(&signing_key, &digest32)
             .map_err(|_| SecpError::InvalidSignature)?;
         Ok(SchnorrSignature {
             bytes: signature.to_bytes(),
         })
     }
 
+    pub fn sign_ecdsa_prehash(&self, digest32: [u8; 32]) -> Result<EcdsaSignature, SecpError> {
+        let signing_key = self.ecdsa_signing_key()?;
+        let signature: K256EcdsaSignature =
+            EcdsaPrehashSigner::sign_prehash(&signing_key, &digest32)
+                .map_err(|_| SecpError::InvalidSignature)?;
+        let signature = signature.normalize_s().unwrap_or(signature);
+        Ok(EcdsaSignature {
+            bytes: signature.to_bytes().into(),
+        })
+    }
+
     fn signing_key(&self) -> Result<SigningKey, SecpError> {
         SigningKey::from_bytes(&self.bytes).map_err(|_| SecpError::InvalidSecretKey)
+    }
+
+    fn ecdsa_signing_key(&self) -> Result<EcdsaSigningKey, SecpError> {
+        EcdsaSigningKey::from_slice(&self.bytes).map_err(|_| SecpError::InvalidSecretKey)
     }
 
     fn verifying_key(&self) -> Result<VerifyingKey, SecpError> {
@@ -190,6 +214,22 @@ impl PublicKey {
 
     pub fn to_sec1_bytes(&self) -> [u8; 33] {
         self.sec1_bytes
+    }
+
+    pub fn verify_ecdsa_prehash(
+        &self,
+        digest32: [u8; 32],
+        sig: &EcdsaSignature,
+    ) -> Result<(), SecpError> {
+        let verifying_key = EcdsaVerifyingKey::from_sec1_bytes(&self.sec1_bytes)
+            .map_err(|_| SecpError::InvalidPublicKey)?;
+        let signature =
+            K256EcdsaSignature::from_slice(&sig.bytes).map_err(|_| SecpError::InvalidSignature)?;
+        if bool::from(signature.s().is_high()) {
+            return Err(SecpError::InvalidSignature);
+        }
+        EcdsaPrehashVerifier::verify_prehash(&verifying_key, &digest32, &signature)
+            .map_err(|_| SecpError::InvalidSignature)
     }
 }
 
@@ -231,8 +271,7 @@ impl XOnlyPublicKey {
             VerifyingKey::from_bytes(&self.bytes).map_err(|_| SecpError::InvalidPublicKey)?;
         let signature =
             Signature::try_from(sig.bytes.as_slice()).map_err(|_| SecpError::InvalidSignature)?;
-        verifying_key
-            .verify_prehash(&digest32, &signature)
+        SchnorrPrehashVerifier::verify_prehash(&verifying_key, &digest32, &signature)
             .map_err(|_| SecpError::InvalidSignature)
     }
 }
@@ -255,6 +294,21 @@ impl<'de> Deserialize<'de> for XOnlyPublicKey {
     {
         let hex = String::deserialize(deserializer)?;
         Self::from_hex(&hex).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EcdsaSignature {
+    bytes: [u8; 64],
+}
+
+impl EcdsaSignature {
+    pub fn from_bytes(bytes: [u8; 64]) -> Self {
+        Self { bytes }
+    }
+
+    pub fn to_bytes(&self) -> [u8; 64] {
+        self.bytes
     }
 }
 
@@ -1617,6 +1671,33 @@ mod tests {
     #[cfg(feature = "nip44")]
     const ORACLE_NIP44_PLAINTEXT: &str = "cyphercat nip44 oracle";
 
+    const SECP256K1_ORDER: [u8; 32] = [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xfe, 0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36,
+        0x41, 0x41,
+    ];
+
+    fn scalar_sub(minuend: [u8; 32], subtrahend: [u8; 32]) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        let mut borrow = 0u16;
+
+        for i in (0..32).rev() {
+            let lhs = u16::from(minuend[i]);
+            let rhs = u16::from(subtrahend[i]) + borrow;
+            if lhs >= rhs {
+                out[i] = u8::try_from(lhs - rhs).expect("byte subtraction stays in range");
+                borrow = 0;
+            } else {
+                out[i] =
+                    u8::try_from((lhs + 256) - rhs).expect("borrowed subtraction stays in range");
+                borrow = 1;
+            }
+        }
+
+        assert_eq!(borrow, 0, "subtraction must not underflow");
+        out
+    }
+
     #[test]
     fn secret_key_roundtrip() {
         let secret = SecretKey::generate().expect("secret key");
@@ -1766,25 +1847,9 @@ mod tests {
     }
 
     #[cfg(all(feature = "batch", feature = "nip19"))]
-    fn run_vanity_stress_tests() -> bool {
-        std::env::var("AINE_RUN_VANITY_TESTS")
-            .map(|value| value == "1")
-            .unwrap_or(false)
-    }
-
-    #[cfg(feature = "batch")]
-    fn run_pow_stress_tests() -> bool {
-        std::env::var("AINE_RUN_POW_TESTS")
-            .map(|value| value == "1")
-            .unwrap_or(false)
-    }
-
-    #[cfg(all(feature = "batch", feature = "nip19"))]
     #[test]
+    #[ignore]
     fn mine_vanity_npub_finds_match() {
-        if !run_vanity_stress_tests() {
-            return;
-        }
         let bundle = mine_vanity_npub("q", 100_000).expect("vanity match");
         assert!(bundle.npub().expect("npub")[5..].starts_with("q"));
     }
@@ -1798,10 +1863,8 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "batch", feature = "nip19"))]
+    #[ignore]
     fn vanity_candidates_returns_top_k() {
-        if !run_vanity_stress_tests() {
-            return;
-        }
         let candidates = mine_vanity_npub_candidates("q", 10_000, 3).expect("candidates");
         assert!(candidates.len() <= 3);
         for c in &candidates {
@@ -1821,10 +1884,8 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "batch", feature = "nip19"))]
+    #[ignore]
     fn vanity_candidates_exact_match_included() {
-        if !run_vanity_stress_tests() {
-            return;
-        }
         let candidates = mine_vanity_npub_candidates("q", 100_000, 5).expect("candidates");
         let has_exact = candidates.iter().any(|c| c.matched_len() == 1);
         assert!(
@@ -1870,10 +1931,8 @@ mod tests {
 
     #[cfg(feature = "batch")]
     #[test]
+    #[ignore]
     fn mine_pow_finds_match() {
-        if !run_pow_stress_tests() {
-            return;
-        }
         let bundle = mine_pow(1, 100_000).expect("pow match");
         assert!(count_leading_zero_nibbles(&bundle.xonly_public_key().to_bytes()) >= 1);
     }
@@ -1887,10 +1946,8 @@ mod tests {
 
     #[test]
     #[cfg(feature = "batch")]
+    #[ignore]
     fn mine_pow_best_returns_best() {
-        if !run_pow_stress_tests() {
-            return;
-        }
         let (bundle, diff) = mine_pow_best(1, 100_000).expect("pow best");
         assert!(diff >= 1);
         let actual = count_leading_zero_nibbles(&bundle.xonly_public_key().to_bytes());
@@ -1937,6 +1994,53 @@ mod tests {
         let error = pubkey_b
             .verify_schnorr_prehash([3u8; 32], &sig)
             .expect_err("must reject wrong public key");
+        assert!(matches!(error, SecpError::InvalidSignature));
+    }
+
+    #[test]
+    fn ecdsa_sign_verify_roundtrip() {
+        let secret = SecretKey::generate().expect("secret key");
+        let public = secret.public_key().expect("public key");
+        let digest = [9u8; 32];
+
+        let sig = secret.sign_ecdsa_prehash(digest).expect("sign");
+        assert_eq!(sig.to_bytes().len(), 64);
+        public.verify_ecdsa_prehash(digest, &sig).expect("verify");
+    }
+
+    #[test]
+    fn ecdsa_verify_wrong_message() {
+        let secret = SecretKey::generate().expect("secret key");
+        let public = secret.public_key().expect("public key");
+        let sig = secret
+            .sign_ecdsa_prehash([0x21; 32])
+            .expect("signature for digest");
+
+        let error = public
+            .verify_ecdsa_prehash([0x22; 32], &sig)
+            .expect_err("must reject wrong digest");
+        assert!(matches!(error, SecpError::InvalidSignature));
+    }
+
+    #[test]
+    fn ecdsa_reject_high_s() {
+        let secret = SecretKey::from_bytes([0x11; 32]).expect("secret key");
+        let public = secret.public_key().expect("public key");
+        let digest = [0x33; 32];
+        let low_s = secret.sign_ecdsa_prehash(digest).expect("sign");
+
+        let low_signature =
+            K256EcdsaSignature::from_slice(&low_s.to_bytes()).expect("low-S signature");
+        let (r_bytes, s_bytes) = low_signature.split_bytes();
+        let high_s_bytes = scalar_sub(SECP256K1_ORDER, s_bytes.into());
+        let high_signature =
+            K256EcdsaSignature::from_scalars(r_bytes, high_s_bytes).expect("high-S signature");
+        assert!(bool::from(high_signature.s().is_high()));
+        let high_s = EcdsaSignature::from_bytes(high_signature.to_bytes().into());
+
+        let error = public
+            .verify_ecdsa_prehash(digest, &high_s)
+            .expect_err("must reject high-S signature");
         assert!(matches!(error, SecpError::InvalidSignature));
     }
 

@@ -142,6 +142,23 @@ AINE_RUN_POW_TESTS=1 cargo test -p neco-secp --features batch
 AINE_RUN_VANITY_TESTS=1 cargo test -p neco-secp --features "batch nip19"
 ```
 
+## ECDSA 署名
+
+`sign_ecdsa_prehash` / `verify_ecdsa_prehash` は Schnorr とは独立した K-256 ECDSA インターフェースです。
+
+```rust
+use neco_secp::{SecretKey, EcdsaSignature};
+
+let secret = SecretKey::generate().unwrap();
+let public = secret.public_key().unwrap();
+let digest: [u8; 32] = [0x42; 32]; // SHA-256 ダイジェスト
+
+let sig: EcdsaSignature = secret.sign_ecdsa_prehash(digest).unwrap();
+public.verify_ecdsa_prehash(digest, &sig).unwrap();
+```
+
+署名側は low-S 正規化を行い、検証側は high-S 署名を拒否します。
+
 ## API
 
 | 項目 | 説明 |
@@ -149,6 +166,9 @@ AINE_RUN_VANITY_TESTS=1 cargo test -p neco-secp --features "batch nip19"
 | `SecretKey` | 検証済み 32 バイトの secp256k1 秘密鍵 |
 | `XOnlyPublicKey` | 検証済み 32 バイトの x-only 公開鍵 |
 | `SchnorrSignature` | 64 バイトの Schnorr 署名 |
+| `EcdsaSignature` | 64 バイトの ECDSA 署名（raw r\|\|s compact 形式）|
+| `SecretKey::sign_ecdsa_prehash(digest)` | K-256 ECDSA prehash 署名（low-S 正規化） |
+| `PublicKey::verify_ecdsa_prehash(digest, sig)` | K-256 ECDSA prehash 検証（high-S 拒否） |
 | `KeyBundle` | 秘密鍵と x-only 公開鍵のペア |
 | `KeyBundle::generate()` | ランダムな鍵ペアを生成する |
 | `KeyBundle::secret()` / `xonly_public_key()` | 検証済みの秘密鍵と x-only 公開鍵を参照で返す |

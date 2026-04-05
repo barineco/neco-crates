@@ -359,6 +359,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
+ "pem-rfc7468",
  "zeroize",
 ]
 
@@ -423,6 +424,7 @@ dependencies = [
  "generic-array",
  "group",
  "hkdf",
+ "pem-rfc7468",
  "pkcs8",
  "rand_core",
  "sec1",
@@ -981,8 +983,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-car"
+version = "0.1.0"
+dependencies = [
+ "neco-cbor",
+ "neco-cid",
+]
+
+[[package]]
+name = "neco-cbor"
+version = "0.1.0"
+
+[[package]]
 name = "neco-cdt"
 version = "0.1.0"
+
+[[package]]
+name = "neco-cid"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
 
 [[package]]
 name = "neco-color"
@@ -1018,7 +1039,7 @@ dependencies = [
 
 [[package]]
 name = "neco-fuzzy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
 ]
@@ -1033,6 +1054,10 @@ dependencies = [
 
 [[package]]
 name = "neco-json"
+version = "0.1.0"
+
+[[package]]
+name = "neco-kdl"
 version = "0.1.0"
 
 [[package]]
@@ -1088,6 +1113,13 @@ dependencies = [
  "approx",
  "criterion",
  "nalgebra",
+]
+
+[[package]]
+name = "neco-p256"
+version = "0.1.0"
+dependencies = [
+ "p256",
 ]
 
 [[package]]
@@ -1162,6 +1194,14 @@ dependencies = [
 
 [[package]]
 name = "neco-stl"
+version = "0.1.0"
+
+[[package]]
+name = "neco-tree"
+version = "0.1.0"
+
+[[package]]
+name = "neco-tui"
 version = "0.1.0"
 
 [[package]]
@@ -1273,6 +1313,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
+name = "p256"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
+dependencies = [
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "sha2",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1289,6 +1341,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem-rfc7468"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
+dependencies = [
+ "base64ct",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1302,6 +1363,15 @@ checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
 dependencies = [
  "der",
  "spki",
+]
+
+[[package]]
+name = "primeorder"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
+dependencies = [
+ "elliptic-curve",
 ]
 
 [[package]]

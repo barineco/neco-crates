@@ -1,0 +1,16 @@
+[package]
+name = "neco-car"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+description = "CAR v1 parser and writer for content-addressable archives"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-car"
+keywords = ["car", "ipld", "dag-cbor", "content-addressable"]
+categories = ["encoding", "parser-implementations"]
+
+[dependencies]
+neco-cbor = { version = "0.1", path = "../neco-cbor" }
+neco-cid = { version = "0.1", path = "../neco-cid" }

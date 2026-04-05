@@ -1,0 +1,18 @@
+[package]
+name = "neco-p256"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Minimal P-256 ECDSA signing core"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-p256"
+keywords = ["p256", "ecdsa", "crypto"]
+categories = ["cryptography"]
+
+[dependencies]
+p256 = { version = "0.13", features = ["ecdsa"] }
+
+[lib]
+path = "src/lib.rs"

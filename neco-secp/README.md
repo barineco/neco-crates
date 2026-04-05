@@ -142,6 +142,23 @@ AINE_RUN_POW_TESTS=1 cargo test -p neco-secp --features batch
 AINE_RUN_VANITY_TESTS=1 cargo test -p neco-secp --features "batch nip19"
 ```
 
+## ECDSA Signing
+
+`sign_ecdsa_prehash` / `verify_ecdsa_prehash` provide a K-256 ECDSA interface independent of Schnorr.
+
+```rust
+use neco_secp::{SecretKey, EcdsaSignature};
+
+let secret = SecretKey::generate().unwrap();
+let public = secret.public_key().unwrap();
+let digest: [u8; 32] = [0x42; 32]; // SHA-256 digest
+
+let sig: EcdsaSignature = secret.sign_ecdsa_prehash(digest).unwrap();
+public.verify_ecdsa_prehash(digest, &sig).unwrap();
+```
+
+The signing side applies low-S normalization; the verification side rejects high-S signatures.
+
 ## API
 
 | Item | Description |
@@ -149,6 +166,9 @@ AINE_RUN_VANITY_TESTS=1 cargo test -p neco-secp --features "batch nip19"
 | `SecretKey` | Validated 32-byte secp256k1 secret key |
 | `XOnlyPublicKey` | Validated 32-byte x-only public key |
 | `SchnorrSignature` | 64-byte Schnorr signature |
+| `EcdsaSignature` | 64-byte ECDSA signature (raw r\|\|s compact format) |
+| `SecretKey::sign_ecdsa_prehash(digest)` | K-256 ECDSA prehash signing with low-S normalization |
+| `PublicKey::verify_ecdsa_prehash(digest, sig)` | K-256 ECDSA prehash verification with high-S rejection |
 | `KeyBundle` | Bundled secret key and x-only public key pair |
 | `KeyBundle::generate()` | Generates a random key pair |
 | `KeyBundle::secret()` / `xonly_public_key()` | Borrow the validated secret key and x-only public key |

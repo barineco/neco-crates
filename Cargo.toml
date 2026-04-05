@@ -5,6 +5,7 @@ members = [
     "neco-fuzzy",
     "neco-rand",
     "neco-secp",
+    "neco-p256",
     "neco-vault",
     "neco-nostr-wasm",
     "neco-gridfield",
@@ -30,6 +31,12 @@ members = [
     "neco-stencil",
     "neco-modal",
     "neco-json",
+    "neco-cbor",
+    "neco-cid",
+    "neco-car",
+    "neco-tree",
+    "neco-tui",
+    "neco-kdl",
 ]
 exclude = [
     "demos/cli",
@@ -40,6 +47,7 @@ default-members = [
     "neco-fuzzy",
     "neco-rand",
     "neco-secp",
+    "neco-p256",
     "neco-vault",
     "neco-gridfield",
     "neco-contact",
@@ -63,5 +71,11 @@ default-members = [
     "neco-stencil",
     "neco-modal",
     "neco-json",
+    "neco-cbor",
+    "neco-cid",
+    "neco-car",
+    "neco-tree",
+    "neco-tui",
+    "neco-kdl",
 ]
 resolver = "2"

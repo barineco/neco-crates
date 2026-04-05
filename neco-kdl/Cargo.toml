@@ -1,0 +1,15 @@
+[package]
+name = "neco-kdl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Zero-dependency KDL v2 parser"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-kdl"
+keywords = ["kdl", "parser", "configuration", "no-std"]
+categories = ["encoding", "parser-implementations"]
+exclude = ["tests/kdl-test-cases"]
+
+[dependencies]
