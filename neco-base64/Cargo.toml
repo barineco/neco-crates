@@ -1,0 +1,14 @@
+[package]
+name = "neco-base64"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+description = "Zero-dependency Base64 encoder and decoder"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-base64"
+keywords = ["base64", "base64url", "encoding", "decoder"]
+categories = ["encoding"]
+
+[dependencies]

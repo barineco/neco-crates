@@ -974,6 +974,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-base58"
+version = "0.1.0"
+
+[[package]]
+name = "neco-base64"
+version = "0.1.0"
+
+[[package]]
 name = "neco-brep"
 version = "0.2.0"
 dependencies = [
@@ -986,13 +994,23 @@ dependencies = [
 name = "neco-car"
 version = "0.1.0"
 dependencies = [
- "neco-cbor",
+ "neco-cbor 0.1.0",
  "neco-cid",
 ]
 
 [[package]]
 name = "neco-cbor"
 version = "0.1.0"
+dependencies = [
+ "neco-cid",
+ "neco-json",
+]
+
+[[package]]
+name = "neco-cbor"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8505e5ca9124a87b865936b9e00d27a6bbe334c2daf7d0d973187b3385517a40"
 
 [[package]]
 name = "neco-cdt"
@@ -1002,6 +1020,7 @@ version = "0.1.0"
 name = "neco-cid"
 version = "0.1.0"
 dependencies = [
+ "neco-cbor 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2",
 ]
 
@@ -1119,7 +1138,9 @@ dependencies = [
 name = "neco-p256"
 version = "0.1.0"
 dependencies = [
+ "neco-json",
  "p256",
+ "sha2",
 ]
 
 [[package]]
@@ -1153,6 +1174,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "k256",
+ "neco-json",
  "serde",
  "serde_json",
  "sha2",

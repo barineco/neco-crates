@@ -13,6 +13,13 @@ categories = ["encoding", "parser-implementations"]
 
 [dependencies]
 sha2 = "0.10"
+neco-cbor = { version = "0.1", optional = true }
+
+[features]
+cbor = ["neco-cbor"]
+
+[dev-dependencies]
+neco-cbor = "0.1"
 
 [lib]
 path = "src/lib.rs"

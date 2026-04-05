@@ -1360,8 +1360,6 @@ pub mod nip19 {
 #[cfg(feature = "nip44")]
 pub mod nip44 {
     use super::*;
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine;
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use hkdf::Hkdf;
     use hmac::{Hmac, Mac};
@@ -1421,7 +1419,7 @@ pub mod nip44 {
         payload.extend_from_slice(&nonce);
         payload.extend_from_slice(&ciphertext);
         payload.extend_from_slice(&mac);
-        Ok(STANDARD.encode(payload))
+        Ok(neco_base64::encode(&payload))
     }
 
     pub fn decrypt(payload: &str, conversation_key: &[u8; 32]) -> Result<String, SecpError> {
@@ -1542,8 +1540,7 @@ pub mod nip44 {
             return Err(SecpError::InvalidNip44("unknown encryption version"));
         }
 
-        let data = STANDARD
-            .decode(payload)
+        let data = neco_base64::decode(payload)
             .map_err(|_| SecpError::InvalidNip44("invalid base64"))?;
         if !(MIN_RAW_PAYLOAD_SIZE..=MAX_RAW_PAYLOAD_SIZE).contains(&data.len()) {
             return Err(SecpError::InvalidNip44("invalid data length"));
@@ -1573,8 +1570,6 @@ pub mod nip44 {
 pub mod nip04 {
     use super::*;
     use aes::Aes256;
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine;
     use cbc::cipher::block_padding::Pkcs7;
     use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
     use k256::ecdh::diffie_hellman;
@@ -1601,8 +1596,8 @@ pub mod nip04 {
 
         Ok(format!(
             "{}?iv={}",
-            STANDARD.encode(ciphertext),
-            STANDARD.encode(iv)
+            neco_base64::encode(ciphertext),
+            neco_base64::encode(&iv)
         ))
     }
 
@@ -1615,11 +1610,9 @@ pub mod nip04 {
             .split_once("?iv=")
             .ok_or(SecpError::InvalidNip04("invalid payload"))?;
         let key = get_shared_secret_x(secret, pubkey)?;
-        let iv = STANDARD
-            .decode(iv_b64)
+        let iv = neco_base64::decode(iv_b64)
             .map_err(|_| SecpError::InvalidNip04("invalid iv"))?;
-        let ciphertext = STANDARD
-            .decode(ciphertext_b64)
+        let ciphertext = neco_base64::decode(ciphertext_b64)
             .map_err(|_| SecpError::InvalidNip04("invalid ciphertext"))?;
         let iv: [u8; 16] = iv
             .try_into()
@@ -2784,8 +2777,6 @@ mod tests {
     #[cfg(feature = "nip44")]
     #[test]
     fn nip44_rejects_invalid_mac() {
-        use base64::Engine;
-
         let secret = SecretKey::from_bytes([0x11; 32]).expect("secret");
         let peer = SecretKey::from_bytes([0x22; 32]).expect("peer");
         let peer_pubkey = peer.xonly_public_key().expect("peer pubkey");
@@ -2794,12 +2785,10 @@ mod tests {
         let nonce = [0x33; 32];
 
         let payload = nip44::encrypt("hello", &conversation_key, Some(nonce)).expect("encrypt");
-        let mut raw = base64::engine::general_purpose::STANDARD
-            .decode(payload)
-            .expect("decode");
+        let mut raw = neco_base64::decode(&payload).expect("decode");
         let last = raw.len() - 1;
         raw[last] ^= 0x01;
-        let tampered = base64::engine::general_purpose::STANDARD.encode(raw);
+        let tampered = neco_base64::encode(&raw);
 
         let error = nip44::decrypt(&tampered, &conversation_key).expect_err("invalid mac");
         assert!(matches!(error, SecpError::InvalidNip44("invalid MAC")));
@@ -2808,8 +2797,6 @@ mod tests {
     #[cfg(feature = "nip44")]
     #[test]
     fn nip44_rejects_invalid_version() {
-        use base64::Engine;
-
         let secret = SecretKey::from_bytes([0x11; 32]).expect("secret");
         let peer = SecretKey::from_bytes([0x22; 32]).expect("peer");
         let peer_pubkey = peer.xonly_public_key().expect("peer pubkey");
@@ -2818,11 +2805,9 @@ mod tests {
         let nonce = [0x33; 32];
 
         let payload = nip44::encrypt("hello", &conversation_key, Some(nonce)).expect("encrypt");
-        let mut raw = base64::engine::general_purpose::STANDARD
-            .decode(payload)
-            .expect("decode");
+        let mut raw = neco_base64::decode(&payload).expect("decode");
         raw[0] = 3;
-        let tampered = base64::engine::general_purpose::STANDARD.encode(raw);
+        let tampered = neco_base64::encode(&raw);
 
         let error = nip44::decrypt(&tampered, &conversation_key).expect_err("invalid version");
         assert!(matches!(
