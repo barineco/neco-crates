@@ -39,6 +39,7 @@ members = [
     "neco-kdl",
     "neco-base58",
     "neco-base64",
+    "neco-argparse",
 ]
 exclude = [
     "demos/cli",
@@ -81,5 +82,6 @@ default-members = [
     "neco-kdl",
     "neco-base58",
     "neco-base64",
+    "neco-argparse",
 ]
 resolver = "2"

@@ -1,0 +1,14 @@
+[package]
+name = "neco-argparse"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+description = "necosystems series CLI argument parser and validator backed by neco-json"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+keywords = ["cli", "argparse", "argument-parser", "json", "command"]
+categories = ["command-line-interface", "parser-implementations"]
+
+[dependencies]
+neco-json = { path = "../neco-json", version = "0.1" }
