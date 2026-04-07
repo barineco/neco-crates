@@ -1,8 +1,7 @@
-use crate::hex::hex_encode;
+#[cfg(feature = "serde")]
+use crate::hex::{hex_decode, hex_encode};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use crate::hex::hex_decode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EcdsaSignature {

@@ -1,9 +1,6 @@
-use crate::keys::decode_xonly_pubkey;
+use crate::keys::{decode_xonly_pubkey, ecdh_raw};
 use crate::{SecpError, SecretKey, XOnlyPublicKey};
 use chacha20::cipher::{KeyIvInit, StreamCipher};
-use k256::ecdh::diffie_hellman;
-use k256::elliptic_curve::rand_core::RngCore;
-use k256::elliptic_curve::rand_core::OsRng;
 use neco_sha2::{Hkdf, Hmac};
 
 const VERSION_V2: u8 = 2;
@@ -18,10 +15,9 @@ pub fn get_conversation_key(
     secret: &SecretKey,
     pubkey: &XOnlyPublicKey,
 ) -> Result<[u8; 32], SecpError> {
-    let signing_key = secret.signing_key()?;
-    let secp_public = decode_xonly_pubkey(pubkey)?;
-    let shared = diffie_hellman(signing_key.as_nonzero_scalar(), secp_public.as_affine());
-    let prk = Hkdf::extract(b"nip44-v2", shared.raw_secret_bytes().as_ref());
+    let peer = decode_xonly_pubkey(pubkey)?;
+    let shared_x = ecdh_raw(&secret.bytes, peer).ok_or(SecpError::InvalidPublicKey)?;
+    let prk = Hkdf::extract(b"nip44-v2", &shared_x);
     Ok(*prk.as_bytes())
 }
 
@@ -112,7 +108,7 @@ fn get_message_keys(
 
 fn random_nonce() -> [u8; 32] {
     let mut nonce = [0u8; 32];
-    OsRng.fill_bytes(&mut nonce);
+    getrandom::getrandom(&mut nonce).expect("getrandom");
     nonce
 }
 
@@ -174,8 +170,8 @@ fn decode_payload(payload: &str) -> Result<DecodedPayload, SecpError> {
         return Err(SecpError::InvalidNip44("unknown encryption version"));
     }
 
-    let data = neco_base64::decode(payload)
-        .map_err(|_| SecpError::InvalidNip44("invalid base64"))?;
+    let data =
+        neco_base64::decode(payload).map_err(|_| SecpError::InvalidNip44("invalid base64"))?;
     if !(MIN_RAW_PAYLOAD_SIZE..=MAX_RAW_PAYLOAD_SIZE).contains(&data.len()) {
         return Err(SecpError::InvalidNip44("invalid data length"));
     }

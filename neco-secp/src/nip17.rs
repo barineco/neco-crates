@@ -1,6 +1,4 @@
-use crate::{nostr, nip44, SecpError, SecretKey, SignedEvent, UnsignedEvent, XOnlyPublicKey};
-use k256::elliptic_curve::rand_core::RngCore;
-use k256::elliptic_curve::rand_core::OsRng;
+use crate::{nip44, nostr, SecpError, SecretKey, SignedEvent, UnsignedEvent, XOnlyPublicKey};
 
 pub fn create_seal(
     inner: UnsignedEvent,
@@ -68,6 +66,8 @@ pub fn open_gift_wrap(
 }
 
 fn randomized_timestamp(base: u64) -> u64 {
-    let offset = (OsRng.next_u32() % 345_601) as u64;
+    let mut buf = [0u8; 4];
+    getrandom::getrandom(&mut buf).expect("getrandom");
+    let offset = (u32::from_le_bytes(buf) % 345_601) as u64;
     base.saturating_sub(172_800) + offset
 }

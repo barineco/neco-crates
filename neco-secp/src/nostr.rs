@@ -1,5 +1,7 @@
 use crate::hex::hex_encode;
-use crate::{EventId, SchnorrSignature, SecpError, SecretKey, SignedEvent, UnsignedEvent, XOnlyPublicKey};
+use crate::{
+    EventId, SchnorrSignature, SecpError, SecretKey, SignedEvent, UnsignedEvent, XOnlyPublicKey,
+};
 use neco_json::JsonValue;
 use neco_sha2::Sha256;
 
@@ -11,13 +13,7 @@ pub fn serialize_event(
         event
             .tags
             .iter()
-            .map(|tag| {
-                JsonValue::Array(
-                    tag.iter()
-                        .map(|s| JsonValue::String(s.clone()))
-                        .collect(),
-                )
-            })
+            .map(|tag| JsonValue::Array(tag.iter().map(|s| JsonValue::String(s.clone())).collect()))
             .collect(),
     );
     let payload = JsonValue::Array(vec![
@@ -44,13 +40,34 @@ pub fn compute_event_id(
     Ok(EventId::from_bytes(bytes))
 }
 
-pub fn finalize_event(
+pub fn finalize_event(event: UnsignedEvent, secret: &SecretKey) -> Result<SignedEvent, SecpError> {
+    let pubkey = secret.xonly_public_key()?;
+    let id = compute_event_id(&pubkey, &event)?;
+    let sig = secret.sign_schnorr_prehash(id.to_bytes())?;
+    Ok(SignedEvent {
+        id,
+        pubkey,
+        created_at: event.created_at,
+        kind: event.kind,
+        tags: event.tags,
+        content: event.content,
+        sig,
+    })
+}
+
+/// 決定的な BIP-340 aux_rand (全ゼロ) で署名する `finalize_event` の亜種。
+///
+/// 同じ入力に対して常に同じ `SignedEvent` を返すため、fixture 照合やクロスレイヤーの
+/// 等価性検証に使える。BIP-340 はフォールトアタック耐性のためフレッシュな aux_rand を
+/// 推奨しており、通常の nostr クライアント実装ではランダム aux を使う
+/// [`finalize_event`] を使用すること。
+pub fn finalize_event_deterministic(
     event: UnsignedEvent,
     secret: &SecretKey,
 ) -> Result<SignedEvent, SecpError> {
     let pubkey = secret.xonly_public_key()?;
     let id = compute_event_id(&pubkey, &event)?;
-    let sig = secret.sign_schnorr_prehash(id.to_bytes())?;
+    let sig = secret.sign_schnorr_prehash_deterministic(id.to_bytes())?;
     Ok(SignedEvent {
         id,
         pubkey,
@@ -67,22 +84,15 @@ pub fn serialize_signed_event(event: &SignedEvent) -> Result<String, SecpError> 
         event
             .tags
             .iter()
-            .map(|tag| {
-                JsonValue::Array(
-                    tag.iter()
-                        .map(|s| JsonValue::String(s.clone()))
-                        .collect(),
-                )
-            })
+            .map(|tag| JsonValue::Array(tag.iter().map(|s| JsonValue::String(s.clone())).collect()))
             .collect(),
     );
-    let content_encoded = neco_json::encode(&JsonValue::String(event.content.clone()))
-        .map_err(SecpError::from)?;
+    let content_encoded =
+        neco_json::encode(&JsonValue::String(event.content.clone())).map_err(SecpError::from)?;
     let content_str =
         String::from_utf8(content_encoded).map_err(|e| SecpError::Json(e.to_string()))?;
     let tags_encoded = neco_json::encode(&tags).map_err(SecpError::from)?;
-    let tags_str =
-        String::from_utf8(tags_encoded).map_err(|e| SecpError::Json(e.to_string()))?;
+    let tags_str = String::from_utf8(tags_encoded).map_err(|e| SecpError::Json(e.to_string()))?;
     Ok(format!(
         "{{\"id\":\"{}\",\"pubkey\":\"{}\",\"created_at\":{},\"kind\":{},\"tags\":{},\"content\":{},\"sig\":\"{}\"}}",
         hex_encode(&event.id.to_bytes()),
@@ -98,7 +108,9 @@ pub fn serialize_signed_event(event: &SignedEvent) -> Result<String, SecpError> 
 pub fn parse_signed_event(json: &str) -> Result<SignedEvent, SecpError> {
     let value = neco_json::parse(json.as_bytes()).map_err(SecpError::from)?;
     if !value.is_object() {
-        return Err(SecpError::InvalidEvent("signed event must be a JSON object"));
+        return Err(SecpError::InvalidEvent(
+            "signed event must be a JSON object",
+        ));
     }
 
     let id = parse_hex32(required_string(&value, "id")?, "id")?;
@@ -145,10 +157,7 @@ fn required_value<'a>(
         .ok_or(SecpError::InvalidEvent(missing_field(field)))
 }
 
-fn required_string<'a>(
-    object: &'a JsonValue,
-    field: &'static str,
-) -> Result<&'a str, SecpError> {
+fn required_string<'a>(object: &'a JsonValue, field: &'static str) -> Result<&'a str, SecpError> {
     required_value(object, field)?
         .as_str()
         .ok_or(SecpError::InvalidEvent(expected_field(field)))

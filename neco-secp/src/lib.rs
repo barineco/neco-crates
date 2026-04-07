@@ -1,37 +1,37 @@
 //! Minimal secp256k1 and Nostr signing core.
 
 mod error;
+pub mod event;
 pub mod hex;
 pub mod keys;
-pub mod sig;
-pub mod event;
 #[cfg(feature = "batch")]
 pub mod mining;
+pub mod sig;
 
-#[cfg(feature = "nostr")]
-pub mod nostr;
-#[cfg(all(feature = "nostr", feature = "nip44"))]
-pub mod nip17;
-#[cfg(feature = "nostr")]
-pub mod nip42;
-#[cfg(feature = "nip19")]
-pub mod nip19;
-#[cfg(feature = "nip44")]
-pub mod nip44;
 #[cfg(feature = "nip04")]
 pub mod nip04;
+#[cfg(all(feature = "nostr", feature = "nip44"))]
+pub mod nip17;
+#[cfg(feature = "nip19")]
+pub mod nip19;
+#[cfg(feature = "nostr")]
+pub mod nip42;
+#[cfg(feature = "nip44")]
+pub mod nip44;
+#[cfg(feature = "nostr")]
+pub mod nostr;
 
 pub use error::SecpError;
-pub use keys::{PublicKey, SecretKey, XOnlyPublicKey};
-pub use sig::{EcdsaSignature, SchnorrSignature};
 pub use event::{EventId, SignedEvent, UnsignedEvent};
 #[cfg(feature = "nip19")]
 pub use event::{NAddr, NEvent, NProfile, NRelay, Nip19};
+pub use keys::{PublicKey, SecretKey, XOnlyPublicKey};
+pub use sig::{EcdsaSignature, SchnorrSignature};
 
-#[cfg(all(feature = "batch", feature = "nip19"))]
-pub use mining::{mine_vanity_npub, mine_vanity_npub_candidates, VanityCandidate};
 #[cfg(feature = "batch")]
 pub use mining::{mine_pow, mine_pow_best};
+#[cfg(all(feature = "batch", feature = "nip19"))]
+pub use mining::{mine_vanity_npub, mine_vanity_npub_candidates, VanityCandidate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyBundle {
@@ -77,7 +77,6 @@ impl KeyBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hex::hex_decode;
 
     const SECP256K1_ORDER: [u8; 32] = [
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -434,22 +433,16 @@ mod tests {
 
     #[test]
     fn ecdsa_reject_high_s() {
-        use k256::ecdsa::Signature as K256EcdsaSignature;
-        use k256::elliptic_curve::scalar::IsHigh;
-
         let secret = SecretKey::from_bytes([0x11; 32]).expect("secret key");
         let public = secret.public_key().expect("public key");
         let digest = [0x33; 32];
         let low_s = secret.sign_ecdsa_prehash(digest).expect("sign");
 
-        let low_signature =
-            K256EcdsaSignature::from_slice(&low_s.to_bytes()).expect("low-S signature");
-        let (r_bytes, s_bytes) = low_signature.split_bytes();
-        let high_s_bytes = scalar_sub(SECP256K1_ORDER, s_bytes.into());
-        let high_signature =
-            K256EcdsaSignature::from_scalars(r_bytes, high_s_bytes).expect("high-S signature");
-        assert!(bool::from(high_signature.s().is_high()));
-        let high_s = EcdsaSignature::from_bytes(high_signature.to_bytes().into());
+        let mut sig_bytes = low_s.to_bytes();
+        let s_bytes: [u8; 32] = sig_bytes[32..].try_into().unwrap();
+        let high_s_bytes = scalar_sub(SECP256K1_ORDER, s_bytes);
+        sig_bytes[32..].copy_from_slice(&high_s_bytes);
+        let high_s = EcdsaSignature::from_bytes(sig_bytes);
 
         let error = public
             .verify_ecdsa_prehash(digest, &high_s)
@@ -470,6 +463,47 @@ mod tests {
 
         let signed = nostr::finalize_event(event, &secret).expect("finalize");
         nostr::verify_event(&signed).expect("verify");
+    }
+
+    #[cfg(feature = "nostr")]
+    #[test]
+    fn finalize_event_deterministic_is_reproducible() {
+        let secret = SecretKey::from_bytes([0x11; 32]).expect("secret");
+        let event = UnsignedEvent {
+            created_at: 1_700_000_000,
+            kind: 1,
+            tags: vec![vec!["p".to_string(), "abc".to_string()]],
+            content: "hello".to_string(),
+        };
+
+        let first = nostr::finalize_event_deterministic(event.clone(), &secret).expect("first");
+        let second = nostr::finalize_event_deterministic(event, &secret).expect("second");
+
+        assert_eq!(first, second);
+        nostr::verify_event(&first).expect("verify first");
+        nostr::verify_event(&second).expect("verify second");
+    }
+
+    #[cfg(feature = "nostr")]
+    #[test]
+    fn finalize_event_random_differs_per_call() {
+        let secret = SecretKey::from_bytes([0x22; 32]).expect("secret");
+        let event = UnsignedEvent {
+            created_at: 1_700_000_000,
+            kind: 1,
+            tags: vec![],
+            content: "hello".to_string(),
+        };
+
+        let first = nostr::finalize_event(event.clone(), &secret).expect("first");
+        let second = nostr::finalize_event(event, &secret).expect("second");
+
+        // id 以外のメタデータは一致するが、sig は aux_rand が異なるため不一致
+        assert_eq!(first.id, second.id);
+        assert_eq!(first.pubkey, second.pubkey);
+        assert_ne!(first.sig, second.sig);
+        nostr::verify_event(&first).expect("verify first");
+        nostr::verify_event(&second).expect("verify second");
     }
 
     #[cfg(feature = "nostr")]

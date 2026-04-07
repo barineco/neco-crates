@@ -1,4 +1,6 @@
-use crate::{EventId, NAddr, NEvent, NProfile, NRelay, Nip19, SecpError, SecretKey, XOnlyPublicKey};
+use crate::{
+    EventId, NAddr, NEvent, NProfile, NRelay, Nip19, SecpError, SecretKey, XOnlyPublicKey,
+};
 use bech32::{self, FromBase32, ToBase32, Variant};
 
 pub fn encode_npub(pubkey: &XOnlyPublicKey) -> Result<String, SecpError> {
@@ -237,11 +239,7 @@ fn optional_bytes32(
         .transpose()
 }
 
-fn required_u32(
-    tlv: &[Vec<Vec<u8>>],
-    tag: usize,
-    entity: &'static str,
-) -> Result<u32, SecpError> {
+fn required_u32(tlv: &[Vec<Vec<u8>>], tag: usize, entity: &'static str) -> Result<u32, SecpError> {
     optional_u32(tlv, tag, entity)?
         .ok_or(SecpError::InvalidNip19(missing_required_field(entity, tag)))
 }
@@ -271,8 +269,7 @@ fn required_utf8(
     let value = tlv[tag]
         .first()
         .ok_or(SecpError::InvalidNip19(missing_required_field(entity, tag)))?;
-    String::from_utf8(value.clone())
-        .map_err(|_| SecpError::InvalidNip19("invalid utf-8 payload"))
+    String::from_utf8(value.clone()).map_err(|_| SecpError::InvalidNip19("invalid utf-8 payload"))
 }
 
 fn utf8_entries(

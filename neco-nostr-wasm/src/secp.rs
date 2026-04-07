@@ -148,6 +148,11 @@ mod tests {
 
     #[test]
     fn finalize_event_matches_core_output() {
+        // wasm binding は BIP-340 推奨のランダム aux_rand を使う通常経路で動作するため、
+        // sig のバイト列は呼び出しごとに異なる。よって wasm 経路と core 経路の等価性は
+        // 「id/pubkey/created_at/kind/tags/content が一致し、かつ両方とも verify OK」
+        // という意味不変量で検証する。決定モードそのものの再現性は neco-secp 側の
+        // finalize_event_deterministic_is_reproducible テストで担保している。
         let secret = SecretKey::from_bytes([0x11; 32]).expect("secret");
         let unsigned = UnsignedEvent {
             created_at: 1_700_000_000,
@@ -161,7 +166,14 @@ mod tests {
         let wasm_signed = neco_secp::nostr::parse_signed_event(&wasm_signed).expect("parse wasm");
         let core_signed = neco_secp::nostr::finalize_event(unsigned, &secret).expect("core");
 
-        assert_eq!(wasm_signed, core_signed);
+        assert_eq!(wasm_signed.id, core_signed.id);
+        assert_eq!(wasm_signed.pubkey, core_signed.pubkey);
+        assert_eq!(wasm_signed.created_at, core_signed.created_at);
+        assert_eq!(wasm_signed.kind, core_signed.kind);
+        assert_eq!(wasm_signed.tags, core_signed.tags);
+        assert_eq!(wasm_signed.content, core_signed.content);
+        neco_secp::nostr::verify_event(&wasm_signed).expect("verify wasm");
+        neco_secp::nostr::verify_event(&core_signed).expect("verify core");
     }
 
     #[test]

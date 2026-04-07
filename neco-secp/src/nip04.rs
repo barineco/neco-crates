@@ -1,11 +1,8 @@
-use crate::keys::decode_xonly_pubkey;
+use crate::keys::{decode_xonly_pubkey, ecdh_raw};
 use crate::{SecpError, SecretKey, XOnlyPublicKey};
 use aes::Aes256;
 use cbc::cipher::block_padding::Pkcs7;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
-use k256::ecdh::diffie_hellman;
-use k256::elliptic_curve::rand_core::RngCore;
-use k256::elliptic_curve::rand_core::OsRng;
 
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
@@ -42,8 +39,7 @@ pub fn decrypt(
         .split_once("?iv=")
         .ok_or(SecpError::InvalidNip04("invalid payload"))?;
     let key = get_shared_secret_x(secret, pubkey)?;
-    let iv = neco_base64::decode(iv_b64)
-        .map_err(|_| SecpError::InvalidNip04("invalid iv"))?;
+    let iv = neco_base64::decode(iv_b64).map_err(|_| SecpError::InvalidNip04("invalid iv"))?;
     let ciphertext = neco_base64::decode(ciphertext_b64)
         .map_err(|_| SecpError::InvalidNip04("invalid ciphertext"))?;
     let iv: [u8; 16] = iv
@@ -58,20 +54,13 @@ pub fn decrypt(
         .map_err(|_| SecpError::InvalidNip04("invalid utf-8 payload"))
 }
 
-fn get_shared_secret_x(
-    secret: &SecretKey,
-    pubkey: &XOnlyPublicKey,
-) -> Result<[u8; 32], SecpError> {
-    let signing_key = secret.signing_key()?;
-    let secp_public = decode_xonly_pubkey(pubkey)?;
-    let shared = diffie_hellman(signing_key.as_nonzero_scalar(), secp_public.as_affine());
-    let mut out = [0u8; 32];
-    out.copy_from_slice(shared.raw_secret_bytes().as_ref());
-    Ok(out)
+fn get_shared_secret_x(secret: &SecretKey, pubkey: &XOnlyPublicKey) -> Result<[u8; 32], SecpError> {
+    let peer = decode_xonly_pubkey(pubkey)?;
+    ecdh_raw(&secret.bytes, peer).ok_or(SecpError::InvalidPublicKey)
 }
 
 fn random_iv() -> [u8; 16] {
     let mut iv = [0u8; 16];
-    OsRng.fill_bytes(&mut iv);
+    getrandom::getrandom(&mut iv).expect("getrandom");
     iv
 }

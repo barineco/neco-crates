@@ -1055,11 +1055,22 @@ mod tests {
             content: "hello".to_string(),
         };
 
+        // vault と core 経路はどちらも BIP-340 推奨のランダム aux_rand で
+        // 署名するため、sig のバイト列は呼び出しごとに異なる。よって等価性は
+        // 「id/pubkey/created_at/kind/tags/content が一致し、両方とも verify OK」
+        // という意味不変量で検証する。
         let from_vault = vault
             .sign_event("main", unsigned.clone(), 102)
             .expect("vault sign");
         let from_core = nostr::finalize_event(unsigned, &secret).expect("core sign");
-        assert_eq!(from_vault, from_core);
+        assert_eq!(from_vault.id, from_core.id);
+        assert_eq!(from_vault.pubkey, from_core.pubkey);
+        assert_eq!(from_vault.created_at, from_core.created_at);
+        assert_eq!(from_vault.kind, from_core.kind);
+        assert_eq!(from_vault.tags, from_core.tags);
+        assert_eq!(from_vault.content, from_core.content);
+        nostr::verify_event(&from_vault).expect("verify vault");
+        nostr::verify_event(&from_core).expect("verify core");
     }
 
     #[test]
