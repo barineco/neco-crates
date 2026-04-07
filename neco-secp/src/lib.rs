@@ -57,8 +57,15 @@ impl fmt::Display for SecpError {
 impl std::error::Error for SecpError {}
 
 #[cfg(feature = "nostr")]
-impl From<serde_json::Error> for SecpError {
-    fn from(value: serde_json::Error) -> Self {
+impl From<neco_json::ParseError> for SecpError {
+    fn from(value: neco_json::ParseError) -> Self {
+        Self::Json(value.to_string())
+    }
+}
+
+#[cfg(feature = "nostr")]
+impl From<neco_json::EncodeError> for SecpError {
+    fn from(value: neco_json::EncodeError) -> Self {
         Self::Json(value.to_string())
     }
 }
@@ -710,21 +717,35 @@ pub struct SignedEvent {
 #[cfg(feature = "nostr")]
 pub mod nostr {
     use super::*;
-    use serde_json::{Map, Value};
+    use neco_json::JsonValue;
 
     pub fn serialize_event(
         pubkey: &XOnlyPublicKey,
         event: &UnsignedEvent,
     ) -> Result<String, SecpError> {
-        let payload = serde_json::json!([
-            0,
-            hex_encode(&pubkey.to_bytes()),
-            event.created_at,
-            event.kind,
-            event.tags,
-            event.content
+        let tags = JsonValue::Array(
+            event
+                .tags
+                .iter()
+                .map(|tag| {
+                    JsonValue::Array(
+                        tag.iter()
+                            .map(|s| JsonValue::String(s.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        );
+        let payload = JsonValue::Array(vec![
+            JsonValue::Number(0.0),
+            JsonValue::String(hex_encode(&pubkey.to_bytes())),
+            JsonValue::Number(event.created_at as f64),
+            JsonValue::Number(event.kind as f64),
+            tags,
+            JsonValue::String(event.content.clone()),
         ]);
-        serde_json::to_string(&payload).map_err(SecpError::from)
+        let bytes = neco_json::encode(&payload).map_err(SecpError::from)?;
+        String::from_utf8(bytes).map_err(|e| SecpError::Json(e.to_string()))
     }
 
     pub fn compute_event_id(
@@ -758,33 +779,51 @@ pub mod nostr {
     }
 
     pub fn serialize_signed_event(event: &SignedEvent) -> Result<String, SecpError> {
-        let tags = serde_json::to_string(&event.tags).map_err(SecpError::from)?;
-        let content = serde_json::to_string(&event.content).map_err(SecpError::from)?;
+        let tags = JsonValue::Array(
+            event
+                .tags
+                .iter()
+                .map(|tag| {
+                    JsonValue::Array(
+                        tag.iter()
+                            .map(|s| JsonValue::String(s.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        );
+        let content_encoded = neco_json::encode(&JsonValue::String(event.content.clone()))
+            .map_err(SecpError::from)?;
+        let content_str =
+            String::from_utf8(content_encoded).map_err(|e| SecpError::Json(e.to_string()))?;
+        let tags_encoded = neco_json::encode(&tags).map_err(SecpError::from)?;
+        let tags_str =
+            String::from_utf8(tags_encoded).map_err(|e| SecpError::Json(e.to_string()))?;
         Ok(format!(
             "{{\"id\":\"{}\",\"pubkey\":\"{}\",\"created_at\":{},\"kind\":{},\"tags\":{},\"content\":{},\"sig\":\"{}\"}}",
             hex_encode(&event.id.to_bytes()),
             hex_encode(&event.pubkey.to_bytes()),
             event.created_at,
             event.kind,
-            tags,
-            content,
+            tags_str,
+            content_str,
             hex_encode(&event.sig.to_bytes())
         ))
     }
 
     pub fn parse_signed_event(json: &str) -> Result<SignedEvent, SecpError> {
-        let value: Value = serde_json::from_str(json).map_err(SecpError::from)?;
-        let object = value.as_object().ok_or(SecpError::InvalidEvent(
-            "signed event must be a JSON object",
-        ))?;
+        let value = neco_json::parse(json.as_bytes()).map_err(SecpError::from)?;
+        if !value.is_object() {
+            return Err(SecpError::InvalidEvent("signed event must be a JSON object"));
+        }
 
-        let id = parse_hex32(required_string(object, "id")?, "id")?;
-        let pubkey = parse_hex32(required_string(object, "pubkey")?, "pubkey")?;
-        let created_at = required_u64(object, "created_at")?;
-        let kind = required_u32(object, "kind")?;
-        let tags = parse_tags(required_value(object, "tags")?)?;
-        let content = required_string(object, "content")?.to_string();
-        let sig = parse_hex64(required_string(object, "sig")?, "sig")?;
+        let id = parse_hex32(required_string(&value, "id")?, "id")?;
+        let pubkey = parse_hex32(required_string(&value, "pubkey")?, "pubkey")?;
+        let created_at = required_u64(&value, "created_at")?;
+        let kind = required_u32(&value, "kind")?;
+        let tags = parse_tags(required_value(&value, "tags")?)?;
+        let content = required_string(&value, "content")?.to_string();
+        let sig = parse_hex64(required_string(&value, "sig")?, "sig")?;
 
         Ok(SignedEvent {
             id: EventId::from_bytes(id),
@@ -814,16 +853,16 @@ pub mod nostr {
     }
 
     fn required_value<'a>(
-        object: &'a Map<String, Value>,
+        object: &'a JsonValue,
         field: &'static str,
-    ) -> Result<&'a Value, SecpError> {
+    ) -> Result<&'a JsonValue, SecpError> {
         object
             .get(field)
             .ok_or(SecpError::InvalidEvent(missing_field(field)))
     }
 
     fn required_string<'a>(
-        object: &'a Map<String, Value>,
+        object: &'a JsonValue,
         field: &'static str,
     ) -> Result<&'a str, SecpError> {
         required_value(object, field)?
@@ -831,19 +870,19 @@ pub mod nostr {
             .ok_or(SecpError::InvalidEvent(expected_field(field)))
     }
 
-    fn required_u64(object: &Map<String, Value>, field: &'static str) -> Result<u64, SecpError> {
+    fn required_u64(object: &JsonValue, field: &'static str) -> Result<u64, SecpError> {
         required_value(object, field)?
             .as_u64()
             .ok_or(SecpError::InvalidEvent(expected_field(field)))
     }
 
-    fn required_u32(object: &Map<String, Value>, field: &'static str) -> Result<u32, SecpError> {
+    fn required_u32(object: &JsonValue, field: &'static str) -> Result<u32, SecpError> {
         required_u64(object, field)?
             .try_into()
             .map_err(|_| SecpError::InvalidEvent(expected_field(field)))
     }
 
-    fn parse_tags(value: &Value) -> Result<Vec<Vec<String>>, SecpError> {
+    fn parse_tags(value: &JsonValue) -> Result<Vec<Vec<String>>, SecpError> {
         let tags = value
             .as_array()
             .ok_or(SecpError::InvalidEvent("tags must be an array"))?;
@@ -2111,14 +2150,27 @@ mod tests {
         };
 
         let serialized = nostr::serialize_event(&public, &event).expect("serialize");
-        let value: serde_json::Value = serde_json::from_str(&serialized).expect("json");
+        let value = neco_json::parse(serialized.as_bytes()).expect("json");
         let array = value.as_array().expect("array payload");
         assert_eq!(array.len(), 6);
-        assert_eq!(array[0], serde_json::json!(0));
-        assert_eq!(array[2], serde_json::json!(event.created_at));
-        assert_eq!(array[3], serde_json::json!(event.kind));
-        assert_eq!(array[4], serde_json::json!(event.tags));
-        assert_eq!(array[5], serde_json::json!(event.content));
+        assert_eq!(array[0].as_u64(), Some(0));
+        assert_eq!(array[2].as_u64(), Some(event.created_at));
+        assert_eq!(array[3].as_u64(), Some(event.kind as u64));
+        let expected_tags = neco_json::JsonValue::Array(
+            event
+                .tags
+                .iter()
+                .map(|tag| {
+                    neco_json::JsonValue::Array(
+                        tag.iter()
+                            .map(|s| neco_json::JsonValue::String(s.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        );
+        assert_eq!(array[4], expected_tags);
+        assert_eq!(array[5].as_str(), Some(event.content.as_str()));
     }
 
     #[cfg(feature = "nostr")]

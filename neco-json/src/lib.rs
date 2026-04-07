@@ -9,9 +9,11 @@ extern crate alloc;
 mod encode;
 mod error;
 mod parse;
+mod traits;
 mod value;
 
 pub use encode::encode;
 pub use error::{AccessError, EncodeError, ParseError, ParseErrorKind};
 pub use parse::parse;
+pub use traits::{FromJson, ToJson};
 pub use value::JsonValue;

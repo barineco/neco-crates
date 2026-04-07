@@ -10,10 +10,11 @@ readme = "README.md"
 documentation = "https://docs.rs/neco-secp"
 keywords = ["secp256k1", "schnorr", "nostr", "crypto"]
 categories = ["cryptography"]
+exclude = ["tests/atproto-interop"]
 
 [features]
 default = ["nostr"]
-nostr = ["dep:serde_json"]
+nostr = ["dep:neco-json"]
 batch = []
 nip19 = ["dep:bech32"]
 nip04 = ["dep:aes", "dep:neco-base64", "dep:cbc"]
@@ -30,13 +31,16 @@ hkdf = { version = "0.12", optional = true }
 hmac = { version = "0.12", optional = true }
 k256 = { version = "0.13", features = ["ecdh", "schnorr", "ecdsa"] }
 serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
+neco-json = { path = "../neco-json", version = "0.1", optional = true }
 sha2 = "0.10"
 
 [[bench]]
 name = "vanity_bench"
 harness = false
 required-features = ["batch", "nip19"]
+
+[dev-dependencies]
+neco-json = { path = "../neco-json" }
 
 [lib]
 path = "src/lib.rs"

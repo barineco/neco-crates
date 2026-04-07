@@ -52,6 +52,35 @@ impl JsonValue {
         }
     }
 
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Number(value) => {
+                let n = *value;
+                // Reject if out of range or has a fractional part.
+                if n >= i64::MIN as f64 && n <= i64::MAX as f64 && (n as i64) as f64 == n {
+                    Some(n as i64)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::Number(value) => {
+                let n = *value;
+                if n >= 0.0 && n <= u64::MAX as f64 && (n as u64) as f64 == n {
+                    Some(n as u64)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value.as_str()),
