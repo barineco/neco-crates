@@ -46,6 +46,16 @@ impl KdlNode {
     }
 }
 
+impl KdlNode {
+    /// named property を key で検索し、最初にマッチした値を返す。
+    pub fn get(&self, key: &str) -> Option<&KdlValue> {
+        self.entries().iter().find_map(|entry| match entry {
+            KdlEntry::Property { key: k, value, .. } if k == key => Some(value),
+            _ => None,
+        })
+    }
+}
+
 /// ノードのエントリ。argument（位置引数）または property（名前付き引数）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum KdlEntry {
@@ -60,6 +70,16 @@ pub enum KdlEntry {
     },
 }
 
+impl KdlEntry {
+    /// エントリの値を返す。
+    pub fn value(&self) -> &KdlValue {
+        match self {
+            KdlEntry::Argument { value, .. } => value,
+            KdlEntry::Property { value, .. } => value,
+        }
+    }
+}
+
 /// KDL v2 の値。
 #[derive(Debug, Clone, PartialEq)]
 pub enum KdlValue {
@@ -67,6 +87,40 @@ pub enum KdlValue {
     Number(KdlNumber),
     Bool(bool),
     Null,
+}
+
+impl KdlValue {
+    /// 文字列値を返す。
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            KdlValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// bool 値を返す。
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            KdlValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// f64 値を返す。
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            KdlValue::Number(n) => n.as_f64(),
+            _ => None,
+        }
+    }
+
+    /// i64 値を返す。
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            KdlValue::Number(n) => n.as_i64(),
+            _ => None,
+        }
+    }
 }
 
 /// 数値の raw 文字列を保持しつつ、可能な場合は解釈済み値も提供する。
@@ -186,5 +240,134 @@ impl core::fmt::Display for KdlErrorKind {
             Self::InconsistentIndentation => write!(f, "inconsistent multiline string indentation"),
             Self::InvalidSlashdash => write!(f, "slashdash in invalid position"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_number(raw: &str, i: Option<i64>, f: Option<f64>) -> KdlNumber {
+        KdlNumber {
+            raw: raw.to_string(),
+            as_i64: i,
+            as_f64: f,
+        }
+    }
+
+    // --- KdlValue::as_str ---
+
+    #[test]
+    fn as_str_returns_some_for_string() {
+        let v = KdlValue::String("hello".to_string());
+        assert_eq!(v.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn as_str_returns_none_for_number() {
+        let v = KdlValue::Number(make_number("42", Some(42), Some(42.0)));
+        assert_eq!(v.as_str(), None);
+    }
+
+    // --- KdlValue::as_bool ---
+
+    #[test]
+    fn as_bool_returns_some_for_bool() {
+        assert_eq!(KdlValue::Bool(true).as_bool(), Some(true));
+        assert_eq!(KdlValue::Bool(false).as_bool(), Some(false));
+    }
+
+    #[test]
+    fn as_bool_returns_none_for_string() {
+        let v = KdlValue::String("true".to_string());
+        assert_eq!(v.as_bool(), None);
+    }
+
+    // --- KdlValue::as_f64 ---
+
+    #[test]
+    fn as_f64_returns_some_for_number() {
+        let v = KdlValue::Number(make_number("2.5", None, Some(2.5)));
+        assert_eq!(v.as_f64(), Some(2.5));
+    }
+
+    #[test]
+    fn as_f64_returns_none_for_bool() {
+        assert_eq!(KdlValue::Bool(true).as_f64(), None);
+    }
+
+    // --- KdlValue::as_i64 ---
+
+    #[test]
+    fn as_i64_returns_some_for_integer() {
+        let v = KdlValue::Number(make_number("42", Some(42), Some(42.0)));
+        assert_eq!(v.as_i64(), Some(42));
+    }
+
+    #[test]
+    fn as_i64_returns_none_for_float_only() {
+        let v = KdlValue::Number(make_number("2.5", None, Some(2.5)));
+        assert_eq!(v.as_i64(), None);
+    }
+
+    // --- KdlEntry::value ---
+
+    #[test]
+    fn entry_value_for_argument() {
+        let entry = KdlEntry::Argument {
+            ty: None,
+            value: KdlValue::String("arg".to_string()),
+        };
+        assert_eq!(entry.value(), &KdlValue::String("arg".to_string()));
+    }
+
+    #[test]
+    fn entry_value_for_property() {
+        let entry = KdlEntry::Property {
+            key: "key".to_string(),
+            ty: None,
+            value: KdlValue::Bool(true),
+        };
+        assert_eq!(entry.value(), &KdlValue::Bool(true));
+    }
+
+    // --- KdlNode::get ---
+
+    #[test]
+    fn node_get_returns_some_for_existing_key() {
+        let node = KdlNode {
+            ty: None,
+            name: "test".to_string(),
+            entries: vec![
+                KdlEntry::Argument {
+                    ty: None,
+                    value: KdlValue::String("positional".to_string()),
+                },
+                KdlEntry::Property {
+                    key: "color".to_string(),
+                    ty: None,
+                    value: KdlValue::String("red".to_string()),
+                },
+            ],
+            children: None,
+        };
+        assert_eq!(
+            node.get("color"),
+            Some(&KdlValue::String("red".to_string()))
+        );
+    }
+
+    #[test]
+    fn node_get_returns_none_for_missing_key() {
+        let node = KdlNode {
+            ty: None,
+            name: "test".to_string(),
+            entries: vec![KdlEntry::Argument {
+                ty: None,
+                value: KdlValue::String("positional".to_string()),
+            }],
+            children: None,
+        };
+        assert_eq!(node.get("missing"), None);
     }
 }
