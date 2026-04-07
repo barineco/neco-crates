@@ -10,9 +10,16 @@ readme = "README.md"
 documentation = "https://docs.rs/neco-p256"
 keywords = ["p256", "ecdsa", "crypto"]
 categories = ["cryptography"]
+exclude = ["tests/atproto-interop"]
 
 [dependencies]
-p256 = { version = "0.13", features = ["ecdsa"] }
+neco-galois = { path = "../neco-galois", version = "0.1" }
+neco-sha2 = { path = "../neco-sha2", version = "0.1" }
+getrandom = "0.2"
+
+[dev-dependencies]
+neco-json = { path = "../neco-json", version = "0.1" }
+neco-sha2 = { path = "../neco-sha2", version = "0.1" }
 
 [lib]
 path = "src/lib.rs"
