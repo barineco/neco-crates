@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
-description = "Color space conversion utilities (sRGB gamma, HSL, CCT)"
+description = "zero dependency color space conversion utilities (sRGB gamma, HSL, CCT)"
 repository = "https://github.com/barineco/neco-crates"
 readme = "README.md"
 documentation = "https://docs.rs/neco-color"
@@ -13,9 +13,6 @@ categories = ["graphics", "multimedia::images"]
 
 [lib]
 path = "src/lib.rs"
-
-[dependencies]
-serde = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false }
