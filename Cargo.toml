@@ -41,6 +41,7 @@ members = [
     "neco-base64",
     "neco-argparse",
     "neco-sha2",
+    "neco-argon2",
 ]
 exclude = [
     "demos/cli",
@@ -85,5 +86,6 @@ default-members = [
     "neco-base64",
     "neco-argparse",
     "neco-sha2",
+    "neco-argon2",
 ]
 resolver = "2"

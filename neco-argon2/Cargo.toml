@@ -1,0 +1,18 @@
+[package]
+name = "neco-argon2"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Minimal-dependency Argon2id password hashing with Blake2b"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+keywords = ["argon2", "argon2id", "password", "hashing", "blake2b"]
+categories = ["cryptography"]
+
+[dependencies]
+getrandom = "0.3"
+neco-base64 = { path = "../neco-base64", version = "0.1" }
+
+[dev-dependencies]
+argon2 = "0.5"
