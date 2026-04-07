@@ -3,12 +3,5 @@
 version = 4
 
 [[package]]
-name = "neco-argparse"
-version = "0.1.0"
-dependencies = [
- "neco-json",
-]
-
-[[package]]
-name = "neco-json"
+name = "neco-sha2"
 version = "0.1.0"

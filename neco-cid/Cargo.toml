@@ -12,7 +12,7 @@ keywords = ["cid", "ipld", "multibase", "multihash"]
 categories = ["encoding", "parser-implementations"]
 
 [dependencies]
-sha2 = "0.10"
+neco-sha2 = { path = "../neco-sha2", version = "0.1" }
 neco-cbor = { version = "0.1", optional = true }
 
 [features]

@@ -1,0 +1,13 @@
+[package]
+name = "neco-sha2"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Zero-dependency SHA-256, HMAC-SHA256, and HKDF-SHA256"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+keywords = ["sha256", "hmac", "hkdf", "crypto"]
+categories = ["cryptography"]
+
+[dependencies]

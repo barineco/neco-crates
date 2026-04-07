@@ -14,11 +14,11 @@ exclude = ["tests/atproto-interop"]
 
 [features]
 default = ["nostr"]
-nostr = ["dep:neco-json"]
+nostr = ["dep:neco-json", "dep:neco-sha2"]
 batch = []
 nip19 = ["dep:bech32"]
 nip04 = ["dep:aes", "dep:neco-base64", "dep:cbc"]
-nip44 = ["dep:neco-base64", "dep:chacha20", "dep:hkdf", "dep:hmac"]
+nip44 = ["dep:neco-base64", "dep:chacha20", "dep:neco-sha2"]
 serde = ["dep:serde"]
 
 [dependencies]
@@ -27,12 +27,10 @@ neco-base64 = { path = "../neco-base64", version = "0.1", optional = true }
 bech32 = { version = "0.9", optional = true }
 cbc = { version = "0.1", optional = true }
 chacha20 = { version = "0.9", optional = true }
-hkdf = { version = "0.12", optional = true }
-hmac = { version = "0.12", optional = true }
 k256 = { version = "0.13", features = ["ecdh", "schnorr", "ecdsa"] }
+neco-sha2 = { path = "../neco-sha2", version = "0.1", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 neco-json = { path = "../neco-json", version = "0.1", optional = true }
-sha2 = "0.10"
 
 [[bench]]
 name = "vanity_bench"
@@ -41,6 +39,7 @@ required-features = ["batch", "nip19"]
 
 [dev-dependencies]
 neco-json = { path = "../neco-json" }
+neco-sha2 = { path = "../neco-sha2" }
 
 [lib]
 path = "src/lib.rs"

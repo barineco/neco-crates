@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use sha2::{Digest, Sha256};
+use neco_sha2::Sha256;
 
 #[cfg(feature = "cbor")]
 mod cbor;

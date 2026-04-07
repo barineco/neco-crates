@@ -18,10 +18,8 @@ use k256::schnorr::signature::hazmat::{
 use k256::schnorr::{Signature, SigningKey, VerifyingKey};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(feature = "nostr")]
-use sha2::Digest;
 #[cfg(any(feature = "nostr", feature = "nip44"))]
-use sha2::Sha256;
+use neco_sha2::Sha256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SecpError {
@@ -1400,12 +1398,9 @@ pub mod nip19 {
 pub mod nip44 {
     use super::*;
     use chacha20::cipher::{KeyIvInit, StreamCipher};
-    use hkdf::Hkdf;
-    use hmac::{Hmac, Mac};
     use k256::ecdh::diffie_hellman;
     use k256::elliptic_curve::rand_core::RngCore;
-
-    type HmacSha256 = Hmac<Sha256>;
+    use neco_sha2::{Hkdf, Hmac};
 
     const VERSION_V2: u8 = 2;
     const MIN_PLAINTEXT_SIZE: usize = 1;
@@ -1422,8 +1417,8 @@ pub mod nip44 {
         let signing_key = secret.signing_key()?;
         let secp_public = super::decode_xonly_pubkey(pubkey)?;
         let shared = diffie_hellman(signing_key.as_nonzero_scalar(), secp_public.as_affine());
-        let hk = Hkdf::<Sha256>::extract(Some(b"nip44-v2"), shared.raw_secret_bytes().as_ref()).0;
-        Ok(hk.into())
+        let prk = Hkdf::extract(b"nip44-v2", shared.raw_secret_bytes().as_ref());
+        Ok(*prk.as_bytes())
     }
 
     pub fn calc_padded_len(len: usize) -> Result<usize, SecpError> {
@@ -1489,10 +1484,10 @@ pub mod nip44 {
         conversation_key: &[u8; 32],
         nonce: &[u8; 32],
     ) -> Result<MessageKeys, SecpError> {
-        let hk = Hkdf::<Sha256>::from_prk(conversation_key)
-            .map_err(|_| SecpError::InvalidNip44("invalid conversation key"))?;
-        let mut keys = [0u8; 76];
-        hk.expand(nonce, &mut keys)
+        use neco_sha2::Prk;
+        let prk = Prk::from_bytes(conversation_key);
+        let keys = prk
+            .expand(nonce, 76)
             .map_err(|_| SecpError::InvalidNip44("failed to derive message keys"))?;
 
         let mut chacha_key = [0u8; 32];
@@ -1553,14 +1548,10 @@ pub mod nip44 {
     }
 
     fn hmac_aad(key: &[u8; 32], message: &[u8], aad: &[u8; 32]) -> Result<[u8; 32], SecpError> {
-        let mut mac = HmacSha256::new_from_slice(key)
-            .map_err(|_| SecpError::InvalidNip44("invalid HMAC key"))?;
+        let mut mac = Hmac::new(key);
         mac.update(aad);
         mac.update(message);
-        let bytes = mac.finalize().into_bytes();
-        let mut out = [0u8; 32];
-        out.copy_from_slice(&bytes);
-        Ok(out)
+        Ok(mac.finalize())
     }
 
     fn chacha20_xor(key: &[u8; 32], nonce: &[u8; 12], data: &[u8]) -> Vec<u8> {
