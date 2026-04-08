@@ -10,5 +10,10 @@ readme = "README.md"
 documentation = "https://docs.rs/neco-cbor"
 keywords = ["cbor", "dag-cbor", "ipld", "no-std", "codec"]
 categories = ["encoding", "no-std", "parser-implementations"]
+exclude = ["tests/atproto-interop"]
 
 [dependencies]
+
+[dev-dependencies]
+neco-json = { path = "../neco-json" }
+neco-cid = { path = "../neco-cid" }
