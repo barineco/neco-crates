@@ -4,11 +4,6 @@ use core::fmt;
 
 use neco_sha2::Sha256;
 
-#[cfg(feature = "cbor")]
-mod cbor;
-#[cfg(feature = "cbor")]
-pub use cbor::CborCidError;
-
 const CID_VERSION_V1: u64 = 1;
 const SHA2_256_CODE: u64 = 0x12;
 const SHA2_256_DIGEST_LEN: usize = 32;

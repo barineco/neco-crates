@@ -11,7 +11,6 @@ SHA-256 依存のみで動作する最小 CIDv1 ライブラリです。IPLD / A
 - multibase エンコード／デコード（base32lower、`b` プレフィックス）
 - サポートコーデック: `dag-cbor` (0x71)、`raw` (0x55)
 - ハッシュ関数: SHA-256 固定
-- `cbor` feature: CBOR tag 42 のエンコード／デコード（`neco-cbor` 連携）
 
 ## 使い方
 
@@ -75,31 +74,6 @@ CIDv1 を表す構造体。`Debug`, `Clone`, `PartialEq`, `Eq`, `Hash` を実装
 |-----------|--------------|------|
 | `Base::Base32Lower` | `b` | RFC 4648 base32 小文字（パディングなし） |
 
-### CBOR tag 42（`cbor` feature 有効時）
-
-`cbor` feature を有効にすると、IPLD リンク表現である CBOR tag 42 のエン��ード／デコードを利用できます。
-
-```toml
-[dependencies]
-neco-cid = { version = "0.1", features = ["cbor"] }
-```
-
-```rust
-use neco_cid::{Cid, Codec};
-
-let cid = Cid::compute(Codec::DagCbor, b"hello");
-
-let tag = cid.to_cbor_tag();
-let decoded = Cid::from_cbor_tag(&tag).unwrap();
-assert_eq!(cid, decoded);
-```
-
-| 項目 | 説明 |
-|------|------|
-| `Cid::to_cbor_tag(&self) -> CborValue` | CBOR tag 42 としてエンコードする |
-| `Cid::from_cbor_tag(value: &CborValue) -> Result<Cid, CborCidError>` | CBOR tag 42 からデコードする |
-| `Cid::from_cbor_tag_optional(value: &CborValue) -> Result<Option<Cid>, CborCidError>` | null なら None、tag 42 なら Some を返す |
-
 ### `CidError`
 
 | バリアント | 説明 |
@@ -110,17 +84,6 @@ assert_eq!(cid, decoded);
 | `InvalidDigestLength` | ダイジェスト長が不正 |
 | `InvalidMultibase` | multibase 文字列の形式が不正 |
 | `UnexpectedEnd` | 入力が途中で終了した |
-
-### `CborCidError`（`cbor` feature 有効時）
-
-| バリアント | 説明 |
-|-----------|------|
-| `NotATag` | CBOR タグではない |
-| `WrongTag(u64)` | タグ番号が 42 ではない |
-| `NotBytes` | タグのペイロードがバイト列ではない |
-| `MissingIdentityPrefix` | 0x00 multibase identity プレフィックスがない |
-| `InvalidCid(CidError)` | CID バイナリのパースに失敗した |
-| `TrailingData` | CID の後に余分なバイトがある |
 
 ## ライセンス
 

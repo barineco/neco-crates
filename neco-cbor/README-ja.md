@@ -2,11 +2,11 @@
 
 [English](README.md)
 
-外部依存ゼロ、`no_std` + `alloc` 環境で動作する最小 CBOR / DAG-CBOR codec です。AT Protocol や IPLD を扱う組み込み・WASM 環境向けに使えます。
+necosystems series の CBOR / DAG-CBOR codec です。`no_std` + `alloc` 環境で動作し、AT Protocol や IPLD を扱う組み込み・WASM 環境に使えます。
 
 ## 特徴
 
-- 外部依存ゼロ（`no_std` + `alloc`）
+- 外部 crate なし。runtime dependency は neco-* crate のみ（`no_std` + `alloc`）
 - CBOR デコード・エンコード（RFC 7049）
 - DAG-CBOR デコード・エンコード（IPLD deterministic encoding）
 - Tag 42（CID link）対応

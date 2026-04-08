@@ -1,10 +1,10 @@
 [package]
 name = "neco-cbor"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.81"
 license = "MIT"
-description = "zero dependency CBOR / DAG-CBOR codec for no_std environments"
+description = "necosystems series CBOR / DAG-CBOR codec for no_std environments"
 repository = "https://github.com/barineco/neco-crates"
 readme = "README.md"
 documentation = "https://docs.rs/neco-cbor"
@@ -13,7 +13,8 @@ categories = ["encoding", "no-std", "parser-implementations"]
 exclude = ["tests/atproto-interop"]
 
 [dependencies]
+neco-base64 = { path = "../neco-base64", version = "0.1.0" }
+neco-cid = { path = "../neco-cid", version = "0.2.0" }
+neco-json = { path = "../neco-json", version = "0.1.1" }
 
 [dev-dependencies]
-neco-json = { path = "../neco-json" }
-neco-cid = { path = "../neco-cid" }

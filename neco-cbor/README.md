@@ -2,11 +2,11 @@
 
 [日本語](README-ja.md)
 
-A zero-dependency CBOR / DAG-CBOR codec that runs in `no_std` + `alloc` environments, suitable for embedded and WASM targets dealing with AT Protocol or IPLD.
+A necosystems series CBOR / DAG-CBOR codec that runs in `no_std` + `alloc` environments, suitable for embedded and WASM targets dealing with AT Protocol or IPLD.
 
 ## Features
 
-- Zero external dependencies (`no_std` + `alloc`)
+- No external crates. Runtime dependencies are limited to neco-* crates (`no_std` + `alloc`)
 - CBOR decode and encode (RFC 7049)
 - DAG-CBOR decode and encode (IPLD deterministic encoding)
 - Tag 42 (CID link) support

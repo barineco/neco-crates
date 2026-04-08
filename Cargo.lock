@@ -929,6 +929,7 @@ dependencies = [
 name = "neco-cbor"
 version = "0.1.0"
 dependencies = [
+ "neco-base64",
  "neco-cid",
  "neco-json",
 ]

@@ -1,11 +1,13 @@
-//! Zero-dependency minimal CBOR and DAG-CBOR codec.
+//! necosystems series CBOR and DAG-CBOR codec.
 
 #![no_std]
 extern crate alloc;
 
+pub mod cid_tag;
 mod decode;
 mod encode;
 mod error;
+pub mod json_bridge;
 mod value;
 
 pub use decode::{decode, decode_dag, decode_one};
