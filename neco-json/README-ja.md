@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-外部依存ゼロ、`no_std` + `alloc` 環境で動作する最小 JSON codec です。パース、エンコード、型安全なフィールドアクセスに対応しています。
+外部依存ゼロ、`no_std` + `alloc` 環境で動作する最小 JSON codec です。パース、エンコード、型安全なフィールドアクセスに加えて、`JsonValue` ベースの軽量な `ToJson` / `FromJson` 変換 trait を提供します。
 
 ## 使い方
 
@@ -45,6 +45,16 @@ let value = JsonValue::Object(vec![
 let bytes = encode(&value).unwrap(); // b"{\"x\":1.0,\"ok\":true}"
 ```
 
+### `ToJson` / `FromJson`
+
+```rust
+use neco_json::{FromJson, ToJson};
+
+let json = vec![1_u64, 2, 3].to_json();
+let restored = Vec::<u64>::from_json(&json).unwrap();
+assert_eq!(restored, vec![1, 2, 3]);
+```
+
 ## API
 
 ### トップレベル関数
@@ -53,6 +63,7 @@ let bytes = encode(&value).unwrap(); // b"{\"x\":1.0,\"ok\":true}"
 |------|------|
 | `parse(input: &[u8]) -> Result<JsonValue, ParseError>` | バイト列を JSON としてパースする |
 | `encode(value: &JsonValue) -> Result<Vec<u8>, EncodeError>` | `JsonValue` を最小 JSON バイト列にエンコードする |
+| `ToJson` / `FromJson` | Rust 値と `JsonValue` の相互変換を行う軽量 trait |
 
 ### `JsonValue`
 

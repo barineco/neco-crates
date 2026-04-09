@@ -54,12 +54,6 @@ let wb = build_wb_matrix(6500.0, 0.0);
 | `cct_to_xy` | Convert correlated color temperature to CIE xy |
 | `build_wb_matrix` | Build a 3x3 white-balance matrix toward D65 |
 
-### Optional features
-
-| Feature | Description |
-|---------|-------------|
-| `serde` | Reserves a serde-compatible feature flag for downstream integration; the current public API is function-based |
-
 ## License
 
 MIT

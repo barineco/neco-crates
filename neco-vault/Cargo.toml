@@ -1,6 +1,6 @@
 [package]
 name = "neco-vault"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -23,7 +23,7 @@ security-hardening = ["dep:getrandom"]
 wasm = []
 
 [dependencies]
-neco-secp = { version = "0.1", path = "../neco-secp", default-features = false }
+neco-secp = { version = "0.1.1", path = "../neco-secp", default-features = false }
 aes = { version = "0.8", optional = true }
 cbc = { version = "0.1", optional = true }
 sha2 = { version = "0.10", optional = true }

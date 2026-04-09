@@ -2,7 +2,7 @@
 
 [日本語](README-ja.md)
 
-A zero-dependency JSON codec that runs in `no_std` + `alloc` environments, providing parse, encode, and typed field access.
+A zero-dependency JSON codec for `no_std` + `alloc` environments, providing parse, encode, typed field access, and lightweight `ToJson` / `FromJson` traits over `JsonValue`.
 
 ## Usage
 
@@ -45,6 +45,16 @@ let value = JsonValue::Object(vec![
 let bytes = encode(&value).unwrap(); // b"{\"x\":1.0,\"ok\":true}"
 ```
 
+### `ToJson` / `FromJson`
+
+```rust
+use neco_json::{FromJson, ToJson};
+
+let json = vec![1_u64, 2, 3].to_json();
+let restored = Vec::<u64>::from_json(&json).unwrap();
+assert_eq!(restored, vec![1, 2, 3]);
+```
+
 ## API
 
 ### Top-level functions
@@ -53,6 +63,7 @@ let bytes = encode(&value).unwrap(); // b"{\"x\":1.0,\"ok\":true}"
 |------|-------------|
 | `parse(input: &[u8]) -> Result<JsonValue, ParseError>` | Parse a byte slice as JSON |
 | `encode(value: &JsonValue) -> Result<Vec<u8>, EncodeError>` | Encode a `JsonValue` to compact JSON bytes |
+| `ToJson` / `FromJson` | Lightweight traits for converting Rust values to and from `JsonValue` |
 
 ### `JsonValue`
 

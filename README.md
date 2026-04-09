@@ -11,6 +11,7 @@ More crates may be added over time.
 ## Crates
 
 External dependencies list always-on dependencies first, with optional ones grouped in parentheses.
+`serde` here means an opt-in `Serialize` / `Deserialize` surface for downstream integration. JSON-specific parsing and encoding live in [`neco-json`](./neco-json).
 
 ### Geometry & Meshing
 
@@ -76,7 +77,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
-| [`neco-color`](./neco-color) | color space and colorimetric utilities | none | (`serde`) |
+| [`neco-color`](./neco-color) | color space and colorimetric utilities | none | none |
 | [`neco-pigment`](./neco-pigment) | pigment-oriented spectral and color mixing utilities | `neco-color` | (`serde`) |
 
 ### View & Bindings

@@ -15,5 +15,5 @@ categories = ["graphics", "multimedia::images", "science"]
 path = "src/lib.rs"
 
 [dependencies]
-neco-color = { version = "0.1.0", path = "../neco-color" }
+neco-color = { version = "0.1.1", path = "../neco-color" }
 serde = { version = "1", features = ["derive"], optional = true }

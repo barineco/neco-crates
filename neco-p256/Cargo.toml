@@ -1,6 +1,6 @@
 [package]
 name = "neco-p256"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -18,7 +18,7 @@ neco-sha2 = { path = "../neco-sha2", version = "0.1" }
 getrandom = "0.2"
 
 [dev-dependencies]
-neco-json = { path = "../neco-json", version = "0.1" }
+neco-json = { path = "../neco-json", version = "0.1.1" }
 neco-sha2 = { path = "../neco-sha2", version = "0.1" }
 
 [lib]

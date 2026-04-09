@@ -919,15 +919,15 @@ dependencies = [
 
 [[package]]
 name = "neco-car"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "neco-cbor 0.1.0",
+ "neco-cbor",
  "neco-cid",
 ]
 
 [[package]]
 name = "neco-cbor"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neco-base64",
  "neco-cid",
@@ -935,26 +935,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "neco-cbor"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8505e5ca9124a87b865936b9e00d27a6bbe334c2daf7d0d973187b3385517a40"
-
-[[package]]
 name = "neco-cdt"
 version = "0.1.0"
 
 [[package]]
 name = "neco-cid"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "neco-cbor 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "neco-sha2",
 ]
 
 [[package]]
 name = "neco-color"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
 ]
@@ -1007,11 +1000,11 @@ dependencies = [
 
 [[package]]
 name = "neco-json"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "neco-kdl"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "neco-kmeans"
@@ -1049,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "neco-nostr-wasm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bech32",
  "neco-secp",
@@ -1070,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "neco-p256"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.2.17",
  "neco-galois",
@@ -1099,7 +1092,7 @@ version = "0.1.0"
 
 [[package]]
 name = "neco-secp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "bech32",
@@ -1165,7 +1158,7 @@ version = "0.1.0"
 
 [[package]]
 name = "neco-vault"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "cbc",

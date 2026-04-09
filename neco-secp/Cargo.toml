@@ -1,6 +1,6 @@
 [package]
 name = "neco-secp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -31,7 +31,7 @@ getrandom = "0.2"
 neco-galois = { path = "../neco-galois", version = "0.1" }
 neco-sha2 = { path = "../neco-sha2", version = "0.1" }
 serde = { version = "1", features = ["derive"], optional = true }
-neco-json = { path = "../neco-json", version = "0.1", optional = true }
+neco-json = { path = "../neco-json", version = "0.1.1", optional = true }
 
 [[bench]]
 name = "vanity_bench"
@@ -39,7 +39,7 @@ harness = false
 required-features = ["batch", "nip19"]
 
 [dev-dependencies]
-neco-json = { path = "../neco-json", version = "0.1" }
+neco-json = { path = "../neco-json", version = "0.1.1" }
 
 [lib]
 path = "src/lib.rs"

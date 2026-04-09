@@ -9,6 +9,7 @@
 ## crate 一覧
 
 外部依存は、常時依存を先に書き、optional な依存を括弧内にまとめています。
+`serde` の表記は opt-in な `Serialize` / `Deserialize` 対応を示します。JSON 専用の入出力は [`neco-json`](./neco-json) が担います。
 
 ### 幾何とメッシュ
 
@@ -74,7 +75,7 @@
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
-| [`neco-color`](./neco-color) | 色空間と測色のユーティリティ | なし | （`serde`） |
+| [`neco-color`](./neco-color) | 色空間と測色のユーティリティ | なし | なし |
 | [`neco-pigment`](./neco-pigment) | 顔料寄りの分光・混色ユーティリティ | `neco-color` | （`serde`） |
 
 ### ビュー操作とバインディング

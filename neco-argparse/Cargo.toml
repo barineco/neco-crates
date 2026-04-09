@@ -11,4 +11,4 @@ keywords = ["cli", "argparse", "argument-parser", "json", "command"]
 categories = ["command-line-interface", "parser-implementations"]
 
 [dependencies]
-neco-json = { path = "../neco-json", version = "0.1" }
+neco-json = { path = "../neco-json", version = "0.1.1" }
