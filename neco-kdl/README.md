@@ -2,7 +2,7 @@
 
 [日本語](README-ja.md)
 
-Zero-dependency KDL v2 parser. Suitable for configuration files and DSL parsing.
+Zero-dependency KDL v2 parser and serializer. Suitable for configuration files and DSL parsing.
 
 ## Features
 
@@ -13,7 +13,9 @@ Zero-dependency KDL v2 parser. Suitable for configuration files and DSL parsing.
   - `#true` / `#false` / `#null` / `#inf` / `#-inf` / `#nan` keywords
   - Hex, octal, binary literals with underscore separators
   - Version marker (`/- kdl-version 2`)
+- Serialization via `serialize()` and `Display` impl (roundtrip-safe)
 - Normalized output (matches official test suite `expected_kdl`)
+- Format-agnostic `Value` conversion (`Value` <-> `KdlDocument`)
 - Zero external dependencies
 - Passes the full official test suite
 
@@ -21,11 +23,11 @@ Zero-dependency KDL v2 parser. Suitable for configuration files and DSL parsing.
 
 ```toml
 [dependencies]
-neco-kdl = "0.1"
+neco-kdl = "0.2"
 ```
 
 ```rust
-use neco_kdl::{parse, normalize};
+use neco_kdl::{parse, serialize, normalize};
 
 fn main() {
     let src = r#"
@@ -40,6 +42,10 @@ fn main() {
     for node in doc.nodes() {
         println!("{}: {} entries", node.name(), node.entries().len());
     }
+
+    // Serialize back to KDL
+    let output = serialize(&doc);
+    print!("{}", output);
 
     // Convert to normalized form
     let normalized = normalize(&doc);
@@ -56,6 +62,14 @@ pub fn parse(input: &str) -> Result<KdlDocument, KdlError>
 ```
 
 Parses a KDL v2 document and returns a `KdlDocument`.
+
+### `serialize`
+
+```rust
+pub fn serialize(doc: &KdlDocument) -> String
+```
+
+Converts a `KdlDocument` back to KDL text. All types (`KdlDocument`, `KdlNode`, `KdlEntry`, `KdlValue`) also implement `Display`.
 
 ### `normalize`
 
@@ -74,6 +88,15 @@ Converts a `KdlDocument` to its normalized string form. Normalization rules:
 - Converts numbers to decimal, strips underscores
 - Adds trailing newline
 
+### `value_to_kdl_document` / `kdl_document_to_value`
+
+```rust
+pub fn value_to_kdl_document(value: &Value) -> Result<KdlDocument, KdlError>
+pub fn kdl_document_to_value(doc: &KdlDocument) -> Result<Value, KdlError>
+```
+
+Converts between `KdlDocument` and a format-agnostic `Value` enum. `Value` serves as an intermediate representation for bridging KDL with other formats (JSON, CBOR, etc.) without external dependencies.
+
 ### Types
 
 | Item | Description |
@@ -85,6 +108,7 @@ Converts a `KdlDocument` to its normalized string form. Normalization rules:
 | `KdlNumber` | Provides `raw()`, `as_i64()`, `as_f64()`. No upper bound on numeric size |
 | `KdlError` | Error with `line()`, `col()` (1-based), `kind()` |
 | `KdlErrorKind` | Error variant: `UnexpectedChar`, `InvalidEscape`, `UnclosedString`, etc. |
+| `Value` | Format-agnostic intermediate: `Null`, `Bool`, `Integer`, `Float`, `String`, `Array`, `Object` |
 
 ## License
 

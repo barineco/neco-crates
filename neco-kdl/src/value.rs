@@ -1,7 +1,7 @@
 /// KDL v2 ドキュメント。ゼロ個以上のノードで構成される。
 #[derive(Debug, Clone, PartialEq)]
 pub struct KdlDocument {
-    pub(crate) nodes: Vec<KdlNode>,
+    pub nodes: Vec<KdlNode>,
 }
 
 impl KdlDocument {
@@ -15,13 +15,13 @@ impl KdlDocument {
 #[derive(Debug, Clone, PartialEq)]
 pub struct KdlNode {
     /// type annotation `(type)name`
-    pub(crate) ty: Option<String>,
+    pub ty: Option<String>,
     /// ノード名
-    pub(crate) name: String,
+    pub name: String,
     /// argument と property を出現順で保持
-    pub(crate) entries: Vec<KdlEntry>,
+    pub entries: Vec<KdlEntry>,
     /// children block `{ ... }`
-    pub(crate) children: Option<Vec<KdlNode>>,
+    pub children: Option<Vec<KdlNode>>,
 }
 
 impl KdlNode {
@@ -129,11 +129,11 @@ impl KdlValue {
 #[derive(Debug, Clone)]
 pub struct KdlNumber {
     /// 原文（アンダースコア・プレフィックス含む）
-    pub(crate) raw: String,
+    pub raw: String,
     /// 整数として解釈可能な場合
-    pub(crate) as_i64: Option<i64>,
+    pub as_i64: Option<i64>,
     /// 浮動小数点として解釈可能な場合（#inf, #-inf, #nan 含む）
-    pub(crate) as_f64: Option<f64>,
+    pub as_f64: Option<f64>,
 }
 
 impl KdlNumber {
