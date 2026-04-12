@@ -31,6 +31,7 @@ members = [
     "neco-radiation",
     "neco-rand",
     "neco-secp",
+    "neco-sha1",
     "neco-sha2",
     "neco-sparse",
     "neco-spectral",

@@ -1107,6 +1107,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-sha1"
+version = "0.1.0"
+
+[[package]]
 name = "neco-sha2"
 version = "0.1.0"
 
