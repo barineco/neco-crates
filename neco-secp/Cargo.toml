@@ -19,6 +19,7 @@ batch = []
 nip19 = ["dep:bech32"]
 nip04 = ["dep:aes", "dep:neco-base64", "dep:cbc"]
 nip44 = ["dep:neco-base64", "dep:chacha20"]
+nip17 = ["nostr", "nip44"]
 serde = ["dep:serde"]
 
 [dependencies]

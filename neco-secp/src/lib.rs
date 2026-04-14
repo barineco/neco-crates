@@ -877,6 +877,42 @@ mod tests {
         ));
     }
 
+    #[cfg(all(feature = "nostr", feature = "nip44"))]
+    #[test]
+    fn nip17_scan_tag_matches_sender_and_recipient_derivation() {
+        let sender = SecretKey::generate().expect("sender");
+        let recipient = SecretKey::generate().expect("recipient");
+        let recipient_pubkey = recipient.xonly_public_key().expect("recipient pubkey");
+        let recipient_scan = SecretKey::generate().expect("recipient scan");
+        let recipient_scan_pubkey = recipient_scan
+            .xonly_public_key()
+            .expect("recipient scan pubkey");
+        let inner = UnsignedEvent {
+            created_at: 1_700_000_666,
+            kind: 14,
+            tags: vec![vec!["p".to_string(), recipient_pubkey.to_hex()]],
+            content: "hello stealth dm".to_string(),
+        };
+
+        let seal = nip17::create_seal(inner.clone(), &sender, &recipient_pubkey).expect("seal");
+        let wrapped = nip17::create_gift_wrap_with_scan_tag(
+            &seal,
+            &recipient_pubkey,
+            &recipient_scan_pubkey,
+        )
+        .expect("gift wrap with scan tag");
+        let recipient_tag =
+            nip17::compute_scan_tag(&recipient_scan, &wrapped.event.pubkey).expect("scan tag");
+        let opened = nip17::open_gift_wrap(&wrapped.event, &recipient).expect("open gift wrap");
+
+        assert_eq!(wrapped.event.kind, 1059);
+        assert_eq!(wrapped.scanning_tag, recipient_tag);
+        assert_eq!(opened.created_at, inner.created_at);
+        assert_eq!(opened.kind, inner.kind);
+        assert_eq!(opened.tags, inner.tags);
+        assert_eq!(opened.content, inner.content);
+    }
+
     #[cfg(feature = "nip19")]
     #[test]
     fn nip19_nsec_roundtrip() {

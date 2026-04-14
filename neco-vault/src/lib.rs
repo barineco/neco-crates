@@ -76,6 +76,13 @@ pub enum VaultError {
     Crypto(SecpError),
 }
 
+/// Sealed DM result with scanning tag for stealth discovery.
+#[cfg(feature = "nip17")]
+pub struct SealedDmResult {
+    pub event: SignedEvent,
+    pub scanning_tag: [u8; 16],
+}
+
 impl core::fmt::Display for VaultError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -616,6 +623,57 @@ impl Vault {
         #[cfg(feature = "security-hardening")]
         apply_security_after(security, &entry.secret);
         Ok(gift_wrap)
+    }
+
+    pub fn create_sealed_dm_with_scan_tag(
+        &mut self,
+        label: &str,
+        content: &str,
+        recipient: &XOnlyPublicKey,
+        recipient_scan_pub: &XOnlyPublicKey,
+        now_unix_seconds: u64,
+    ) -> Result<SealedDmResult, VaultError> {
+        #[cfg(feature = "security-hardening")]
+        let security = self.config.security;
+        let entry = self
+            .entries
+            .get_mut(label)
+            .ok_or(VaultError::MissingLabel)?;
+        entry.last_used_unix_seconds = now_unix_seconds;
+        #[cfg(feature = "security-hardening")]
+        {
+            apply_security_before(security, &entry.secret);
+            if security.enable_dummy_operations {
+                apply_dummy_nip44(&entry.secret);
+            }
+        }
+        let inner = UnsignedEvent {
+            created_at: now_unix_seconds,
+            kind: 14,
+            tags: vec![vec!["p".to_string(), recipient.to_hex()]],
+            content: content.to_string(),
+        };
+        let seal = neco_secp::nip17::create_seal(inner, &entry.secret, recipient)
+            .map_err(VaultError::from)?;
+        let result =
+            neco_secp::nip17::create_gift_wrap_with_scan_tag(&seal, recipient, recipient_scan_pub)
+                .map_err(VaultError::from)?;
+        #[cfg(feature = "security-hardening")]
+        apply_security_after(security, &entry.secret);
+        Ok(SealedDmResult {
+            event: result.event,
+            scanning_tag: result.scanning_tag,
+        })
+    }
+
+    /// Compute scanning tag using an explicit scan private key.
+    /// scan_priv is independent from the signing key (DJ-I1).
+    pub fn compute_scan_tag(
+        scan_priv: &SecretKey,
+        ephemeral_pubkey: &XOnlyPublicKey,
+    ) -> Result<[u8; 16], VaultError> {
+        neco_secp::nip17::compute_scan_tag(scan_priv, ephemeral_pubkey)
+            .map_err(VaultError::from)
     }
 
     pub fn open_gift_wrap_dm(
@@ -1474,5 +1532,39 @@ mod tests {
         assert!(vault
             .create_sealed_dm("missing", "test", &peer, 100)
             .is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "nip17")]
+    fn vault_nip17_scan_tag_roundtrip() {
+        let mut vault_sender = Vault::new(VaultConfig::default()).expect("vault");
+        let mut vault_recipient = Vault::new(VaultConfig::default()).expect("vault");
+        let sender_secret = SecretKey::generate().expect("sender");
+        let recipient_secret = SecretKey::generate().expect("recipient");
+        vault_sender
+            .import_plaintext("sender", sender_secret, 100)
+            .expect("import");
+        vault_recipient
+            .import_plaintext("recipient", recipient_secret, 100)
+            .expect("import");
+        let recipient_pubkey = vault_recipient.public_key("recipient").expect("pubkey");
+        let result = vault_sender
+            .create_sealed_dm_with_scan_tag(
+                "sender",
+                "hello via scan tag",
+                &recipient_pubkey,
+                &recipient_pubkey,
+                101,
+            )
+            .expect("create dm");
+        assert_eq!(result.event.kind, 1059);
+        let computed = Vault::compute_scan_tag(&recipient_secret, &result.event.pubkey)
+            .expect("compute tag");
+        assert_eq!(result.scanning_tag, computed);
+        let inner = vault_recipient
+            .open_gift_wrap_dm("recipient", &result.event, 102)
+            .expect("open dm");
+        assert_eq!(inner.kind, 14);
+        assert_eq!(inner.content, "hello via scan tag");
     }
 }
