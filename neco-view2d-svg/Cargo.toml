@@ -1,0 +1,18 @@
+[package]
+name = "neco-view2d-svg"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "necosystems series SVG attribute emitters for neco-view2d world coordinates"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-view2d-svg"
+keywords = ["svg", "view", "2d", "coordinates", "path"]
+categories = ["graphics"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neco-view2d = { path = "../neco-view2d", version = "0.1" }
