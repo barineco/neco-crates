@@ -1,0 +1,22 @@
+[package]
+name = "neco-nodegraph"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "necosystems series node graph data model with port-typed nodes and edges"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-nodegraph"
+keywords = ["node-graph", "editor", "dag", "data-model", "ports"]
+categories = ["data-structures"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+json = ["neco-json"]
+
+[dependencies]
+neco-json = { path = "../neco-json", version = "0.1", optional = true }
