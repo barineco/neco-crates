@@ -57,12 +57,31 @@ External dependencies list always-on dependencies first, with optional ones grou
 |---|---|---|---|
 | [`neco-fuzzy`](./neco-fuzzy) | minimal fuzzy score core for commands, paths, and short identifiers | none | none |
 
+### Encoding & Data Formats
+
+| Crate | Summary | Internal dependencies | Main external dependencies |
+|---|---|---|---|
+| [`neco-json`](./neco-json) | minimal JSON codec for `no_std` environments | none | none |
+| [`neco-kdl`](./neco-kdl) | KDL v2 parser and serializer | none | none |
+| [`neco-base58`](./neco-base58) | Base58BTC encoder and decoder | none | none |
+| [`neco-base64`](./neco-base64) | Base64 encoder and decoder | none | none |
+| [`neco-cid`](./neco-cid) | CIDv1 and multibase core | `neco-sha2` | none |
+| [`neco-cbor`](./neco-cbor) | CBOR / DAG-CBOR codec for `no_std` environments | `neco-base64`, `neco-cid`, `neco-json` | none |
+| [`neco-car`](./neco-car) | CAR v1 parser and writer for content-addressable archives | `neco-cbor`, `neco-cid` | none |
+
 ### Cryptography
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
+| [`neco-sha1`](./neco-sha1) | SHA-1 hash function | none | none |
+| [`neco-sha2`](./neco-sha2) | SHA-256, HMAC-SHA256, and HKDF-SHA256 | none | none |
+| [`neco-gf256`](./neco-gf256) | GF(2^8) finite field arithmetic | none | none |
+| [`neco-galois`](./neco-galois) | finite field arithmetic for secp256k1 and P-256 | `neco-sha2` | none |
+| [`neco-ecc`](./neco-ecc) | Reed-Solomon error correction over GF(2^8) | `neco-gf256` | none |
 | [`neco-rand`](./neco-rand) | deterministic non-cryptographic random generators and stable bucket assignment | none | none |
+| [`neco-p256`](./neco-p256) | P-256 ECDSA signing core | `neco-galois`, `neco-sha2` | `getrandom` |
 | [`neco-secp`](./neco-secp) | minimal secp256k1 and Nostr signing core | none | `k256`, `sha2` (`serde_json`, `bech32`, `aes`, `cbc`, `chacha20`, `hkdf`, `hmac`, `base64`) |
+| [`neco-argon2`](./neco-argon2) | Argon2id password hashing with Blake2b | `neco-base64` | `getrandom` |
 | [`neco-vault`](./neco-vault) | memory-only signing vault built on `neco-secp` | `neco-secp` | none (`aes`, `cbc`, `scrypt`, `getrandom`, `sha2`) |
 | [`neco-nostr-wasm`](./neco-nostr-wasm) | WebAssembly bindings for `neco-secp` and `neco-vault` | `neco-secp`, `neco-vault` | `bech32`, `serde_json`, `wasm-bindgen` |
 
@@ -87,6 +106,12 @@ External dependencies list always-on dependencies first, with optional ones grou
 | [`neco-nodegraph`](./neco-nodegraph) | rendering-agnostic node graph data model | (`neco-json`) | none |
 | [`neco-edge-routing`](./neco-edge-routing) | 2D edge routing primitives for node graphs | (`neco-spline`, `neco-nurbs`) | none |
 
+### Data Structures
+
+| Crate | Summary | Internal dependencies | Main external dependencies |
+|---|---|---|---|
+| [`neco-tree`](./neco-tree) | generic ID-bearing tree with cursor-based navigation | none | none |
+
 ### View & Bindings
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
@@ -94,6 +119,13 @@ External dependencies list always-on dependencies first, with optional ones grou
 | [`neco-view2d`](./neco-view2d) | 2D camera / viewport utilities | none | (`serde`) |
 | [`neco-view2d-svg`](./neco-view2d-svg) | SVG attribute emitters for `neco-view2d` world coordinates | `neco-view2d` | none |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | WebAssembly bindings for `neco-view2d` | `neco-view2d` | `wasm-bindgen` |
+
+### CLI
+
+| Crate | Summary | Internal dependencies | Main external dependencies |
+|---|---|---|---|
+| [`neco-tui`](./neco-tui) | minimal ANSI terminal helpers | none | none |
+| [`neco-argparse`](./neco-argparse) | CLI argument parser backed by `neco-json` | `neco-json` | none |
 
 Most crates are intentionally independent so they can be published and consumed separately on crates.io. The repository is a monorepo for maintenance convenience, not a runtime-coupled framework.
 

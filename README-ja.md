@@ -55,12 +55,31 @@
 |---|---|---|---|
 | [`neco-fuzzy`](./neco-fuzzy) | コマンド、パス、短い識別子向けの最小 fuzzy スコアコア | なし | なし |
 
+### エンコーディングとデータ形式
+
+| crate | 概要 | 内部依存 | 主な外部依存 |
+|---|---|---|---|
+| [`neco-json`](./neco-json) | `no_std` 環境で動作する最小 JSON コーデック | なし | なし |
+| [`neco-kdl`](./neco-kdl) | KDL v2 パーサーとシリアライザ | なし | なし |
+| [`neco-base58`](./neco-base58) | Base58BTC エンコーダとデコーダ | なし | なし |
+| [`neco-base64`](./neco-base64) | Base64 エンコーダとデコーダ | なし | なし |
+| [`neco-cid`](./neco-cid) | CIDv1 とマルチベースコア | `neco-sha2` | なし |
+| [`neco-cbor`](./neco-cbor) | `no_std` 環境向け CBOR / DAG-CBOR コーデック | `neco-base64`, `neco-cid`, `neco-json` | なし |
+| [`neco-car`](./neco-car) | コンテンツアドレス可能アーカイブ向け CAR v1 パーサーとライター | `neco-cbor`, `neco-cid` | なし |
+
 ### 暗号処理
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
+| [`neco-sha1`](./neco-sha1) | SHA-1 ハッシュ関数 | なし | なし |
+| [`neco-sha2`](./neco-sha2) | SHA-256、HMAC-SHA256、HKDF-SHA256 | なし | なし |
+| [`neco-gf256`](./neco-gf256) | GF(2^8) 有限体演算 | なし | なし |
+| [`neco-galois`](./neco-galois) | secp256k1 / P-256 向けの有限体演算 | `neco-sha2` | なし |
+| [`neco-ecc`](./neco-ecc) | GF(2^8) 上の Reed-Solomon 誤り訂正 | `neco-gf256` | なし |
 | [`neco-rand`](./neco-rand) | 決定論的な非暗号乱数生成と安定バケット割り当て | なし | なし |
+| [`neco-p256`](./neco-p256) | P-256 ECDSA 署名コア | `neco-galois`, `neco-sha2` | `getrandom` |
 | [`neco-secp`](./neco-secp) | 最小限の secp256k1 / Nostr 署名コア | なし | `k256`, `sha2`（`serde_json`, `bech32`, `aes`, `cbc`, `chacha20`, `hkdf`, `hmac`, `base64`） |
+| [`neco-argon2`](./neco-argon2) | Blake2b ベースの Argon2id パスワードハッシュ | `neco-base64` | `getrandom` |
 | [`neco-vault`](./neco-vault) | `neco-secp` 上で動作するインメモリ署名保管庫 | `neco-secp` | なし（`aes`, `cbc`, `scrypt`, `getrandom`, `sha2`） |
 | [`neco-nostr-wasm`](./neco-nostr-wasm) | `neco-secp` と `neco-vault` の WebAssembly バインディング | `neco-secp`, `neco-vault` | `bech32`, `serde_json`, `wasm-bindgen` |
 
@@ -85,6 +104,12 @@
 | [`neco-nodegraph`](./neco-nodegraph) | 描画非依存のノードグラフモデル | （`neco-json`） | なし |
 | [`neco-edge-routing`](./neco-edge-routing) | ノードグラフ向けの 2D エッジルーティング | （`neco-spline`, `neco-nurbs`） | なし |
 
+### データ構造
+
+| crate | 概要 | 内部依存 | 主な外部依存 |
+|---|---|---|---|
+| [`neco-tree`](./neco-tree) | カーソルベース操作の汎用木構造 | なし | なし |
+
 ### ビュー操作とバインディング
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
@@ -92,6 +117,13 @@
 | [`neco-view2d`](./neco-view2d) | 2D カメラ / ビューポート操作 | なし | （`serde`） |
 | [`neco-view2d-svg`](./neco-view2d-svg) | `neco-view2d` のワールド座標を SVG 属性文字列へ変換 | `neco-view2d` | なし |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | `neco-view2d` の WebAssembly バインディング | `neco-view2d` | `wasm-bindgen` |
+
+### CLI
+
+| crate | 概要 | 内部依存 | 主な外部依存 |
+|---|---|---|---|
+| [`neco-tui`](./neco-tui) | 最小限の ANSI ターミナル補助 | なし | なし |
+| [`neco-argparse`](./neco-argparse) | `neco-json` ベースの CLI 引数パーサー | `neco-json` | なし |
 
 大半のcrateは crates.io で個別公開できるよう、意図的に独立性を保っています。運用は monorepo 体制ですが、実行時に密結合する単一フレームワークではありません。
 
