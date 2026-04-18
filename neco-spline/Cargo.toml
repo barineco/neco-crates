@@ -1,10 +1,10 @@
 [package]
 name = "neco-spline"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
-description = "Natural cubic spline interpolation"
+description = "zero dependency natural cubic spline interpolation"
 repository = "https://github.com/barineco/neco-crates"
 readme = "README.md"
 documentation = "https://docs.rs/neco-spline"
@@ -13,6 +13,3 @@ categories = ["mathematics", "science"]
 
 [lib]
 path = "src/lib.rs"
-
-[dependencies]
-serde = { version = "1", features = ["derive"], optional = true }

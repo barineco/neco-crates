@@ -23,7 +23,6 @@ impl std::fmt::Display for SplineError {
 impl std::error::Error for SplineError {}
 
 /// Natural cubic spline interpolation.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CubicSpline {
     /// Control points, sorted by ascending x.
     points: Vec<(f32, f32)>,
@@ -177,6 +176,10 @@ impl CubicSpline {
         a + b * dx + c * dx * dx + d * dx * dx * dx
     }
 }
+
+mod bezier;
+
+pub use bezier::BezierCubic;
 
 #[cfg(test)]
 mod tests {

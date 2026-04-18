@@ -2,7 +2,7 @@
 
 [日本語](README-ja.md)
 
-Natural cubic spline interpolation with no dependencies beyond the standard library by default, plus an optional `serde` feature. Useful when you need a smooth curve through a set of data points.
+zero dependency natural cubic spline interpolation
 
 A Japanese mathematical note is available in [MATH-ja.md](MATH-ja.md).
 
@@ -18,7 +18,7 @@ The *natural* boundary conditions ($S'' = 0$ at both endpoints) yield a tridiago
 
 ```toml
 [dependencies]
-neco-spline = "0.1"
+neco-spline = "0.2"
 ```
 
 ### Basic interpolation
@@ -68,14 +68,10 @@ assert!(matches!(err, Err(SplineError::NonAscendingX)));
 | `CubicSpline` | Natural cubic spline interpolator |
 | `CubicSpline::new(points)` | Build a spline from `&[(f32, f32)]` (returns `Result`) |
 | `CubicSpline::evaluate(x)` | Evaluate the spline at a given $x$ |
+| `CubicSpline::to_bezier_segments()` | Export the spline as cubic Bezier segments |
+| `BezierCubic` | Cubic Bezier segment with four control points |
 | `SplineError::InsufficientPoints` | Fewer than 2 control points |
 | `SplineError::NonAscendingX` | Control points not in strictly ascending $x$ order |
-
-### Optional features
-
-| Feature | Description |
-|---------|-------------|
-| `serde` | Enables `Serialize` / `Deserialize` for `CubicSpline` |
 
 ## License
 

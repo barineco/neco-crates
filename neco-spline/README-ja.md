@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-既定では標準ライブラリだけで使え、必要なら `serde` feature を足せる軽量な自然三次スプライン補間器です。データ点を通る滑らかな曲線を作れます。
+外部依存なしの自然三次スプライン補間器です。データ点を通る滑らかな曲線を構築します。
 
 詳細な数理背景は [MATH-ja.md](MATH-ja.md) を参照してください。
 
@@ -18,7 +18,7 @@ $$S_i(x) = a_i + b_i(x - x_i) + c_i(x - x_i)^2 + d_i(x - x_i)^3$$
 
 ```toml
 [dependencies]
-neco-spline = "0.1"
+neco-spline = "0.2"
 ```
 
 ### 基本的な補間
@@ -38,7 +38,7 @@ let y = spline.evaluate(0.5);
 
 ### 境界クランプ
 
-データ範囲外では最近傍の端点値を返す:
+データ範囲外では最近傍の端点値を返します。
 
 ```rust
 let spline = CubicSpline::new(&[(0.0, 1.0), (1.0, 2.0)]).unwrap();
@@ -47,12 +47,12 @@ assert_eq!(spline.evaluate(-1.0), 1.0); // 左端点でクランプ
 assert_eq!(spline.evaluate(5.0),  2.0); // 右端点でクランプ
 ```
 
-### エラーハンドリング
+### エラー処理
 
 ```rust
 use neco_spline::{CubicSpline, SplineError};
 
-// 2点未満
+// 2 点未満
 let err = CubicSpline::new(&[(0.0, 0.0)]);
 assert!(matches!(err, Err(SplineError::InsufficientPoints)));
 
@@ -64,18 +64,14 @@ assert!(matches!(err, Err(SplineError::NonAscendingX)));
 ## API
 
 | 項目 | 説明 |
-|------|-------------|
+|------|------|
 | `CubicSpline` | 自然三次スプライン補間器 |
-| `CubicSpline::new(points)` | `&[(f32, f32)]` からスプラインを構築（`Result` を返す） |
-| `CubicSpline::evaluate(x)` | 指定した $x$ でスプラインを評価 |
+| `CubicSpline::new(points)` | `&[(f32, f32)]` からスプラインを構築 (`Result` を返す) |
+| `CubicSpline::evaluate(x)` | 指定した $x$ でスプラインを評価する |
+| `CubicSpline::to_bezier_segments()` | スプラインを 3 次 Bezier セグメント列へ変換する |
+| `BezierCubic` | 4 つの制御点を持つ 3 次 Bezier セグメント |
 | `SplineError::InsufficientPoints` | 制御点が 2 点未満 |
 | `SplineError::NonAscendingX` | 制御点の $x$ が狭義昇順でない |
-
-### オプション機能
-
-| 項目 | 説明 |
-|---------|-------------|
-| `serde` | `CubicSpline` に `Serialize` / `Deserialize` を有効化する |
 
 ## ライセンス
 
