@@ -81,7 +81,10 @@ pub fn create_gift_wrap_with_scan_tag(
         content: encrypted,
     };
     let event = nostr::finalize_event(wrap, &ephemeral)?;
-    Ok(GiftWrapWithScanTag { event, scanning_tag })
+    Ok(GiftWrapWithScanTag {
+        event,
+        scanning_tag,
+    })
 }
 
 pub fn open_gift_wrap(

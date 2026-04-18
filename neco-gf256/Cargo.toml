@@ -1,0 +1,13 @@
+[package]
+name = "neco-gf256"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "zero dependency GF(2^8) finite field arithmetic"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+keywords = ["galois", "finite-field", "gf256", "reed-solomon", "error-correction"]
+categories = ["no-std", "mathematics"]
+
+[dependencies]

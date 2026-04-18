@@ -895,12 +895,9 @@ mod tests {
         };
 
         let seal = nip17::create_seal(inner.clone(), &sender, &recipient_pubkey).expect("seal");
-        let wrapped = nip17::create_gift_wrap_with_scan_tag(
-            &seal,
-            &recipient_pubkey,
-            &recipient_scan_pubkey,
-        )
-        .expect("gift wrap with scan tag");
+        let wrapped =
+            nip17::create_gift_wrap_with_scan_tag(&seal, &recipient_pubkey, &recipient_scan_pubkey)
+                .expect("gift wrap with scan tag");
         let recipient_tag =
             nip17::compute_scan_tag(&recipient_scan, &wrapped.event.pubkey).expect("scan tag");
         let opened = nip17::open_gift_wrap(&wrapped.event, &recipient).expect("open gift wrap");

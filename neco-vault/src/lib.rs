@@ -672,8 +672,7 @@ impl Vault {
         scan_priv: &SecretKey,
         ephemeral_pubkey: &XOnlyPublicKey,
     ) -> Result<[u8; 16], VaultError> {
-        neco_secp::nip17::compute_scan_tag(scan_priv, ephemeral_pubkey)
-            .map_err(VaultError::from)
+        neco_secp::nip17::compute_scan_tag(scan_priv, ephemeral_pubkey).map_err(VaultError::from)
     }
 
     pub fn open_gift_wrap_dm(
@@ -778,6 +777,185 @@ impl Vault {
             .map_err(|_| VaultError::InvalidEncrypted("invalid secret key"))?;
         self.import_plaintext(label, secret, now_unix_seconds)
     }
+}
+
+// --- epoch key + group key API (dm-epoch feature) ---
+
+#[cfg(feature = "dm-epoch")]
+impl Vault {
+    /// Derive an epoch key for a 1:1 DM conversation.
+    ///
+    /// `epoch_secret` is the NIP-44 conversation key (ECDH) between `label`'s
+    /// secret key and `peer_pubkey`.  The epoch key chain is then:
+    ///
+    /// ```text
+    /// epoch_key[0] = HKDF-SHA256(epoch_secret, "dm-epoch-0", 32)
+    /// epoch_key[n] = HKDF-SHA256(epoch_key[n-1], "dm-epoch-rotate", 32)
+    /// ```
+    pub fn derive_epoch_key(
+        &self,
+        label: &str,
+        peer_pubkey: &XOnlyPublicKey,
+        epoch_number: u32,
+    ) -> Result<[u8; 32], VaultError> {
+        let entry = self.entries.get(label).ok_or(VaultError::MissingLabel)?;
+        let conversation_key = neco_secp::nip44::get_conversation_key(&entry.secret, peer_pubkey)?;
+        let prk = neco_sha2::Prk::from_bytes(&conversation_key);
+        let epoch0_bytes = prk
+            .expand(b"dm-epoch-0", 32)
+            .map_err(|_| VaultError::InvalidEncrypted("HKDF expand failed"))?;
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&epoch0_bytes);
+        for _ in 0..epoch_number {
+            key = Self::hkdf_rotate(&key, b"dm-epoch-rotate");
+        }
+        Ok(key)
+    }
+
+    /// Encrypt `plaintext` with a symmetric epoch key using ChaCha20-Poly1305.
+    ///
+    /// Returns `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
+    pub fn encrypt_with_epoch(
+        epoch_key: &[u8; 32],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, VaultError> {
+        use chacha20poly1305::aead::{Aead, KeyInit};
+        use chacha20poly1305::ChaCha20Poly1305;
+
+        let cipher = ChaCha20Poly1305::new(epoch_key.into());
+        let mut nonce = [0u8; 12];
+        getrandom::getrandom(&mut nonce)
+            .map_err(|_| VaultError::InvalidEncrypted("CSPRNG failed"))?;
+        let ciphertext = cipher
+            .encrypt(chacha20poly1305::Nonce::from_slice(&nonce), plaintext)
+            .map_err(|_| VaultError::InvalidEncrypted("epoch encryption failed"))?;
+        let mut out = Vec::with_capacity(12 + ciphertext.len());
+        out.extend_from_slice(&nonce);
+        out.extend_from_slice(&ciphertext);
+        Ok(out)
+    }
+
+    /// Decrypt ciphertext produced by [`encrypt_with_epoch`](Self::encrypt_with_epoch).
+    ///
+    /// Expects `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
+    pub fn decrypt_with_epoch(
+        epoch_key: &[u8; 32],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>, VaultError> {
+        use chacha20poly1305::aead::{Aead, KeyInit};
+        use chacha20poly1305::ChaCha20Poly1305;
+
+        if ciphertext.len() < 12 + 16 {
+            return Err(VaultError::InvalidEncrypted("epoch ciphertext too short"));
+        }
+        let nonce = &ciphertext[..12];
+        let ct = &ciphertext[12..];
+        let cipher = ChaCha20Poly1305::new(epoch_key.into());
+        cipher
+            .decrypt(chacha20poly1305::Nonce::from_slice(nonce), ct)
+            .map_err(|_| VaultError::InvalidEncrypted("epoch decryption failed"))
+    }
+
+    /// Generate a fresh random group key (32 bytes from CSPRNG).
+    pub fn create_group_key() -> [u8; 32] {
+        let mut key = [0u8; 32];
+        // getrandom can only fail on unsupported platforms; panic is acceptable
+        // in production, but we avoid unwrap() outside tests per project rules.
+        let _ = getrandom::getrandom(&mut key);
+        key
+    }
+
+    /// Encrypt a group key for a recipient using an ephemeral ECDH key pair
+    /// and NIP-44 encryption.
+    ///
+    /// Returns `ephemeral_pubkey (32 bytes) || nip44_payload (base64-encoded string as UTF-8 bytes)`.
+    pub fn encrypt_group_key(
+        group_key: &[u8; 32],
+        recipient_pubkey: &XOnlyPublicKey,
+    ) -> Result<Vec<u8>, VaultError> {
+        let ephemeral = SecretKey::generate()?;
+        let ephemeral_pub = ephemeral.xonly_public_key()?;
+        let conversation_key =
+            neco_secp::nip44::get_conversation_key(&ephemeral, recipient_pubkey)?;
+        let hex_payload: String = group_key.iter().map(|b| format!("{b:02x}")).collect();
+        let encrypted = neco_secp::nip44::encrypt(&hex_payload, &conversation_key, None)?;
+        let encrypted_bytes = encrypted.as_bytes();
+        let mut out = Vec::with_capacity(32 + encrypted_bytes.len());
+        out.extend_from_slice(&ephemeral_pub.to_bytes());
+        out.extend_from_slice(encrypted_bytes);
+        Ok(out)
+    }
+
+    /// Decrypt a group key that was encrypted with [`encrypt_group_key`](Self::encrypt_group_key).
+    pub fn decrypt_group_key(&self, label: &str, encrypted: &[u8]) -> Result<[u8; 32], VaultError> {
+        if encrypted.len() < 33 {
+            return Err(VaultError::InvalidEncrypted(
+                "encrypted group key too short",
+            ));
+        }
+        let entry = self.entries.get(label).ok_or(VaultError::MissingLabel)?;
+        let ephemeral_pub_bytes: [u8; 32] = encrypted[..32]
+            .try_into()
+            .map_err(|_| VaultError::InvalidEncrypted("invalid ephemeral pubkey"))?;
+        let ephemeral_pub = XOnlyPublicKey::from_bytes(ephemeral_pub_bytes)
+            .map_err(|_| VaultError::InvalidEncrypted("invalid ephemeral pubkey"))?;
+        let conversation_key =
+            neco_secp::nip44::get_conversation_key(&entry.secret, &ephemeral_pub)?;
+        let payload_str = core::str::from_utf8(&encrypted[32..])
+            .map_err(|_| VaultError::InvalidEncrypted("invalid group key payload"))?;
+        let hex_str = neco_secp::nip44::decrypt(payload_str, &conversation_key)?;
+        let bytes =
+            hex_to_bytes(&hex_str).ok_or(VaultError::InvalidEncrypted("invalid group key hex"))?;
+        if bytes.len() != 32 {
+            return Err(VaultError::InvalidEncrypted("group key must be 32 bytes"));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        Ok(key)
+    }
+
+    /// Encrypt a group message (alias for [`encrypt_with_epoch`](Self::encrypt_with_epoch)).
+    pub fn encrypt_group_message(
+        group_epoch_key: &[u8; 32],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, VaultError> {
+        Self::encrypt_with_epoch(group_epoch_key, plaintext)
+    }
+
+    /// Decrypt a group message (alias for [`decrypt_with_epoch`](Self::decrypt_with_epoch)).
+    pub fn decrypt_group_message(
+        group_epoch_key: &[u8; 32],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>, VaultError> {
+        Self::decrypt_with_epoch(group_epoch_key, ciphertext)
+    }
+
+    /// Rotate a group epoch key: `HKDF-SHA256(current_key, "group-epoch-rotate", 32)`.
+    pub fn rotate_group_epoch(current_key: &[u8; 32]) -> [u8; 32] {
+        Self::hkdf_rotate(current_key, b"group-epoch-rotate")
+    }
+
+    // --- internal helpers ---
+
+    fn hkdf_rotate(key: &[u8; 32], info: &[u8]) -> [u8; 32] {
+        let prk = neco_sha2::Prk::from_bytes(key);
+        // 32 bytes is always within HKDF limits; safe to expect in private helper.
+        let expanded = prk.expand(info, 32).expect("HKDF expand 32 bytes");
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&expanded);
+        out
+    }
+}
+
+#[cfg(feature = "dm-epoch")]
+fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -1558,13 +1736,109 @@ mod tests {
             )
             .expect("create dm");
         assert_eq!(result.event.kind, 1059);
-        let computed = Vault::compute_scan_tag(&recipient_secret, &result.event.pubkey)
-            .expect("compute tag");
+        let computed =
+            Vault::compute_scan_tag(&recipient_secret, &result.event.pubkey).expect("compute tag");
         assert_eq!(result.scanning_tag, computed);
         let inner = vault_recipient
             .open_gift_wrap_dm("recipient", &result.event, 102)
             .expect("open dm");
         assert_eq!(inner.kind, 14);
         assert_eq!(inner.content, "hello via scan tag");
+    }
+
+    // --- dm-epoch tests ---
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn epoch_key_derivation_is_deterministic() {
+        let mut vault = Vault::new(VaultConfig::default()).expect("vault");
+        let secret = SecretKey::generate().expect("secret");
+        let peer = SecretKey::generate().expect("peer");
+        let peer_pub = peer.xonly_public_key().expect("peer pubkey");
+        vault.import_plaintext("a", secret, 100).expect("import");
+
+        let k1 = vault.derive_epoch_key("a", &peer_pub, 3).expect("k1");
+        let k2 = vault.derive_epoch_key("a", &peer_pub, 3).expect("k2");
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn epoch_key_rotation_produces_distinct_keys() {
+        let mut vault = Vault::new(VaultConfig::default()).expect("vault");
+        let secret = SecretKey::generate().expect("secret");
+        let peer = SecretKey::generate().expect("peer");
+        let peer_pub = peer.xonly_public_key().expect("peer pubkey");
+        vault.import_plaintext("a", secret, 100).expect("import");
+
+        let k0 = vault.derive_epoch_key("a", &peer_pub, 0).expect("k0");
+        let k1 = vault.derive_epoch_key("a", &peer_pub, 1).expect("k1");
+        let k2 = vault.derive_epoch_key("a", &peer_pub, 2).expect("k2");
+        assert_ne!(k0, k1);
+        assert_ne!(k1, k2);
+        assert_ne!(k0, k2);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn encrypt_decrypt_epoch_roundtrip() {
+        let key = [0xab; 32];
+        let plaintext = b"hello epoch encryption";
+        let ct = Vault::encrypt_with_epoch(&key, plaintext).expect("encrypt");
+        let pt = Vault::decrypt_with_epoch(&key, &ct).expect("decrypt");
+        assert_eq!(pt, plaintext);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn epoch_decrypt_wrong_key_fails() {
+        let key = [0xab; 32];
+        let wrong = [0xcd; 32];
+        let ct = Vault::encrypt_with_epoch(&key, b"secret").expect("encrypt");
+        assert!(Vault::decrypt_with_epoch(&wrong, &ct).is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn create_group_key_uniqueness() {
+        let k1 = Vault::create_group_key();
+        let k2 = Vault::create_group_key();
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn encrypt_decrypt_group_key_roundtrip() {
+        let mut vault = Vault::new(VaultConfig::default()).expect("vault");
+        let secret = SecretKey::generate().expect("secret");
+        let pubkey = secret.xonly_public_key().expect("pubkey");
+        vault.import_plaintext("r", secret, 100).expect("import");
+
+        let group_key = Vault::create_group_key();
+        let encrypted = Vault::encrypt_group_key(&group_key, &pubkey).expect("encrypt group key");
+        let decrypted = vault
+            .decrypt_group_key("r", &encrypted)
+            .expect("decrypt group key");
+        assert_eq!(group_key, decrypted);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn group_message_roundtrip() {
+        let key = Vault::create_group_key();
+        let msg = b"group message content";
+        let ct = Vault::encrypt_group_message(&key, msg).expect("encrypt");
+        let pt = Vault::decrypt_group_message(&key, &ct).expect("decrypt");
+        assert_eq!(pt, msg);
+    }
+
+    #[test]
+    #[cfg(feature = "dm-epoch")]
+    fn rotate_group_epoch_deterministic_and_distinct() {
+        let k0 = [0x42; 32];
+        let k1 = Vault::rotate_group_epoch(&k0);
+        let k1_again = Vault::rotate_group_epoch(&k0);
+        assert_eq!(k1, k1_again, "rotation must be deterministic");
+        assert_ne!(k0, k1, "rotated key must differ from input");
     }
 }

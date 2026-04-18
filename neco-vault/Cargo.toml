@@ -17,6 +17,7 @@ nostr = ["neco-secp/nostr"]
 nip04 = ["neco-secp/nip04"]
 nip44 = ["neco-secp/nip44"]
 nip17 = ["nip44", "nostr"]
+dm-epoch = ["nip44", "dep:neco-sha2", "dep:chacha20poly1305", "dep:getrandom"]
 encrypted = ["dep:aes", "dep:cbc", "dep:getrandom", "dep:scrypt"]
 encrypted-legacy-v1 = ["encrypted", "dep:sha2"]
 security-hardening = ["dep:getrandom"]
@@ -28,6 +29,8 @@ aes = { version = "0.8", optional = true }
 cbc = { version = "0.1", optional = true }
 sha2 = { version = "0.10", optional = true }
 getrandom = { version = "0.2", optional = true, features = ["js"] }
+neco-sha2 = { version = "0.1", path = "../neco-sha2", optional = true }
+chacha20poly1305 = { version = "0.10", optional = true }
 scrypt = { version = "0.11", optional = true, default-features = false }
 
 [lib]

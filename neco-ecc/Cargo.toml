@@ -1,0 +1,14 @@
+[package]
+name = "neco-ecc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "necosystems series Reed-Solomon error correction over GF(2^8)"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+keywords = ["reed-solomon", "error-correction", "erasure", "ecc", "gf256"]
+categories = ["no-std", "mathematics"]
+
+[dependencies]
+neco-gf256 = { path = "../neco-gf256", version = "0.1" }
