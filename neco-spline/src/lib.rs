@@ -1,3 +1,5 @@
+//! zero dependency natural cubic spline interpolation.
+
 /// Spline interpolation error type.
 #[derive(Debug, Clone)]
 pub enum SplineError {

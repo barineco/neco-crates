@@ -20,7 +20,7 @@
 | [`neco-mesh`](./neco-mesh) | 2D / 3D メッシュ生成とメッシュ処理 | `neco-cdt`, `neco-nurbs`, `neco-stl` | （`serde`） |
 | [`neco-stl`](./neco-stl) | STL の読み書き | なし | なし |
 | [`neco-cdt`](./neco-cdt) | 制約付き Delaunay 三角形分割 | なし | なし |
-| [`neco-spline`](./neco-spline) | スプライン補間 | なし | （`serde`） |
+| [`neco-spline`](./neco-spline) | スプライン補間 | なし | なし |
 
 ### 行列計算と数値解法
 
@@ -78,11 +78,19 @@
 | [`neco-color`](./neco-color) | 色空間と測色のユーティリティ | なし | なし |
 | [`neco-pigment`](./neco-pigment) | 顔料寄りの分光・混色ユーティリティ | `neco-color` | （`serde`） |
 
+### ノードグラフ
+
+| crate | 概要 | 内部依存 | 主な外部依存 |
+|---|---|---|---|
+| [`neco-nodegraph`](./neco-nodegraph) | 描画非依存のノードグラフモデル | （`neco-json`） | なし |
+| [`neco-edge-routing`](./neco-edge-routing) | ノードグラフ向けの 2D エッジルーティング | （`neco-spline`, `neco-nurbs`） | なし |
+
 ### ビュー操作とバインディング
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
 | [`neco-view2d`](./neco-view2d) | 2D カメラ / ビューポート操作 | なし | （`serde`） |
+| [`neco-view2d-svg`](./neco-view2d-svg) | `neco-view2d` のワールド座標を SVG 属性文字列へ変換 | `neco-view2d` | なし |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | `neco-view2d` の WebAssembly バインディング | `neco-view2d` | `wasm-bindgen` |
 
 大半のcrateは crates.io で個別公開できるよう、意図的に独立性を保っています。運用は monorepo 体制ですが、実行時に密結合する単一フレームワークではありません。

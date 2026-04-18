@@ -22,7 +22,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 | [`neco-mesh`](./neco-mesh) | 2D / 3D mesh generation and mesh utilities | `neco-cdt`, `neco-nurbs`, `neco-stl` | (`serde`) |
 | [`neco-stl`](./neco-stl) | STL parsing and writing | none | none |
 | [`neco-cdt`](./neco-cdt) | constrained Delaunay triangulation | none | none |
-| [`neco-spline`](./neco-spline) | spline interpolation | none | (`serde`) |
+| [`neco-spline`](./neco-spline) | spline interpolation | none | none |
 
 ### Linear Algebra & Solvers
 
@@ -80,11 +80,19 @@ External dependencies list always-on dependencies first, with optional ones grou
 | [`neco-color`](./neco-color) | color space and colorimetric utilities | none | none |
 | [`neco-pigment`](./neco-pigment) | pigment-oriented spectral and color mixing utilities | `neco-color` | (`serde`) |
 
+### Node Graph
+
+| Crate | Summary | Internal dependencies | Main external dependencies |
+|---|---|---|---|
+| [`neco-nodegraph`](./neco-nodegraph) | rendering-agnostic node graph data model | (`neco-json`) | none |
+| [`neco-edge-routing`](./neco-edge-routing) | 2D edge routing primitives for node graphs | (`neco-spline`, `neco-nurbs`) | none |
+
 ### View & Bindings
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
 | [`neco-view2d`](./neco-view2d) | 2D camera / viewport utilities | none | (`serde`) |
+| [`neco-view2d-svg`](./neco-view2d-svg) | SVG attribute emitters for `neco-view2d` world coordinates | `neco-view2d` | none |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | WebAssembly bindings for `neco-view2d` | `neco-view2d` | `wasm-bindgen` |
 
 Most crates are intentionally independent so they can be published and consumed separately on crates.io. The repository is a monorepo for maintenance convenience, not a runtime-coupled framework.

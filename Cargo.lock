@@ -1000,6 +1000,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-edge-routing"
+version = "0.1.0"
+dependencies = [
+ "neco-nurbs",
+ "neco-spline",
+]
+
+[[package]]
 name = "neco-eigensolve"
 version = "0.1.0"
 dependencies = [
@@ -1074,6 +1082,13 @@ name = "neco-modal"
 version = "0.1.0"
 dependencies = [
  "neco-stft",
+]
+
+[[package]]
+name = "neco-nodegraph"
+version = "0.1.0"
+dependencies = [
+ "neco-json",
 ]
 
 [[package]]
@@ -1165,10 +1180,7 @@ dependencies = [
 
 [[package]]
 name = "neco-spline"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
+version = "0.2.0"
 
 [[package]]
 name = "neco-stencil"
@@ -1215,6 +1227,13 @@ name = "neco-view2d"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "neco-view2d-svg"
+version = "0.1.0"
+dependencies = [
+ "neco-view2d",
 ]
 
 [[package]]

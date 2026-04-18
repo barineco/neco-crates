@@ -2,7 +2,7 @@
 
 [日本語](README-ja.md)
 
-necosystems series node graph data model with port-typed nodes and edges.
+necosystems series node graph data model with port-typed nodes and edges
 
 ## Usage
 
