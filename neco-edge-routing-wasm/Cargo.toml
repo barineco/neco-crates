@@ -1,0 +1,20 @@
+[package]
+name = "neco-edge-routing-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "minimum dependency WebAssembly bindings for neco-edge-routing via wasm-bindgen"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-edge-routing-wasm"
+keywords = ["wasm", "routing", "edge", "graph", "bindings"]
+categories = ["wasm", "graphics"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+neco-edge-routing = { version = "0.1.0", path = "../neco-edge-routing", features = ["spline", "nurbs"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"

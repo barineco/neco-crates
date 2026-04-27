@@ -1,0 +1,20 @@
+[package]
+name = "neco-view2d-svg-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "minimum dependency WebAssembly bindings for neco-view2d-svg via wasm-bindgen"
+repository = "https://github.com/barineco/neco-crates"
+readme = "README.md"
+documentation = "https://docs.rs/neco-view2d-svg-wasm"
+keywords = ["wasm", "svg", "view", "2d", "bindings"]
+categories = ["wasm", "graphics"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+neco-view2d = { version = "0.1.0", path = "../neco-view2d" }
+neco-view2d-svg = { version = "0.1.0", path = "../neco-view2d-svg" }
+wasm-bindgen = "0.2"

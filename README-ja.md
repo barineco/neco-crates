@@ -103,6 +103,7 @@
 |---|---|---|---|
 | [`neco-nodegraph`](./neco-nodegraph) | 描画非依存のノードグラフモデル | （`neco-json`） | なし |
 | [`neco-edge-routing`](./neco-edge-routing) | ノードグラフ向けの 2D エッジルーティング | （`neco-spline`, `neco-nurbs`） | なし |
+| [`neco-edge-routing-wasm`](./neco-edge-routing-wasm) | `neco-edge-routing` の WebAssembly バインディング | `neco-edge-routing` | `wasm-bindgen`, `js-sys` |
 
 ### データ構造
 
@@ -116,6 +117,7 @@
 |---|---|---|---|
 | [`neco-view2d`](./neco-view2d) | 2D カメラ / ビューポート操作 | なし | （`serde`） |
 | [`neco-view2d-svg`](./neco-view2d-svg) | `neco-view2d` のワールド座標を SVG 属性文字列へ変換 | `neco-view2d` | なし |
+| [`neco-view2d-svg-wasm`](./neco-view2d-svg-wasm) | `neco-view2d-svg` の WebAssembly バインディング | `neco-view2d-svg`, `neco-view2d` | `wasm-bindgen` |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | `neco-view2d` の WebAssembly バインディング | `neco-view2d` | `wasm-bindgen` |
 
 ### CLI

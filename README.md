@@ -105,6 +105,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 |---|---|---|---|
 | [`neco-nodegraph`](./neco-nodegraph) | rendering-agnostic node graph data model | (`neco-json`) | none |
 | [`neco-edge-routing`](./neco-edge-routing) | 2D edge routing primitives for node graphs | (`neco-spline`, `neco-nurbs`) | none |
+| [`neco-edge-routing-wasm`](./neco-edge-routing-wasm) | WebAssembly bindings for `neco-edge-routing` | `neco-edge-routing` | `wasm-bindgen`, `js-sys` |
 
 ### Data Structures
 
@@ -118,6 +119,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 |---|---|---|---|
 | [`neco-view2d`](./neco-view2d) | 2D camera / viewport utilities | none | (`serde`) |
 | [`neco-view2d-svg`](./neco-view2d-svg) | SVG attribute emitters for `neco-view2d` world coordinates | `neco-view2d` | none |
+| [`neco-view2d-svg-wasm`](./neco-view2d-svg-wasm) | WebAssembly bindings for `neco-view2d-svg` | `neco-view2d-svg`, `neco-view2d` | `wasm-bindgen` |
 | [`neco-view2d-wasm`](./neco-view2d-wasm) | WebAssembly bindings for `neco-view2d` | `neco-view2d` | `wasm-bindgen` |
 
 ### CLI

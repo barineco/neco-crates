@@ -16,6 +16,7 @@ members = [
     "neco-dop853",
     "neco-ecc",
     "neco-edge-routing",
+    "neco-edge-routing-wasm",
     "neco-eigensolve",
     "neco-fuzzy",
     "neco-galois",
@@ -48,6 +49,7 @@ members = [
     "neco-vault",
     "neco-view2d",
     "neco-view2d-svg",
+    "neco-view2d-svg-wasm",
     "neco-view2d-wasm",
 ]
 exclude = [

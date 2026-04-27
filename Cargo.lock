@@ -1008,6 +1008,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-edge-routing-wasm"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "neco-edge-routing",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "neco-eigensolve"
 version = "0.1.0"
 dependencies = [
@@ -1234,6 +1243,15 @@ name = "neco-view2d-svg"
 version = "0.1.0"
 dependencies = [
  "neco-view2d",
+]
+
+[[package]]
+name = "neco-view2d-svg-wasm"
+version = "0.1.0"
+dependencies = [
+ "neco-view2d",
+ "neco-view2d-svg",
+ "wasm-bindgen",
 ]
 
 [[package]]
