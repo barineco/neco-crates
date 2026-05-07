@@ -19,4 +19,4 @@ default = []
 json = ["neco-json"]
 
 [dependencies]
-neco-json = { path = "../neco-json", version = "0.1", optional = true }
+neco-json = { version = "0.1", optional = true }

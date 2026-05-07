@@ -1054,10 +1054,8 @@ dependencies = [
 [[package]]
 name = "neco-json"
 version = "0.1.1"
-
-[[package]]
-name = "neco-kdl"
-version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b31c79d61cbaa7761211ddda729d18691dcc40bdf4344f6918751b6e5e80b866"
 
 [[package]]
 name = "neco-kmeans"

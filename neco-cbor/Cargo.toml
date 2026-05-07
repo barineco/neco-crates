@@ -15,6 +15,6 @@ exclude = ["tests/atproto-interop"]
 [dependencies]
 neco-base64 = { path = "../neco-base64", version = "0.1.0" }
 neco-cid = { path = "../neco-cid", version = "0.2.0" }
-neco-json = { path = "../neco-json", version = "0.1.1" }
+neco-json = { version = "0.1.1" }
 
 [dev-dependencies]

@@ -11,7 +11,7 @@ More crates may be added over time.
 ## Crates
 
 External dependencies list always-on dependencies first, with optional ones grouped in parentheses.
-`serde` here means an opt-in `Serialize` / `Deserialize` surface for downstream integration. JSON-specific parsing and encoding live in [`neco-json`](./neco-json).
+`serde` here means an opt-in `Serialize` / `Deserialize` surface for downstream integration. JSON and KDL parsers and serializers have moved to a separate repository [`barineco/neco-parser`](https://github.com/barineco/neco-parser) (`neco-json` / `neco-kdl`).
 
 ### Geometry & Meshing
 
@@ -61,12 +61,10 @@ External dependencies list always-on dependencies first, with optional ones grou
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
-| [`neco-json`](./neco-json) | minimal JSON codec for `no_std` environments | none | none |
-| [`neco-kdl`](./neco-kdl) | KDL v2 parser and serializer | none | none |
 | [`neco-base58`](./neco-base58) | Base58BTC encoder and decoder | none | none |
 | [`neco-base64`](./neco-base64) | Base64 encoder and decoder | none | none |
 | [`neco-cid`](./neco-cid) | CIDv1 and multibase core | `neco-sha2` | none |
-| [`neco-cbor`](./neco-cbor) | CBOR / DAG-CBOR codec for `no_std` environments | `neco-base64`, `neco-cid`, `neco-json` | none |
+| [`neco-cbor`](./neco-cbor) | CBOR / DAG-CBOR codec for `no_std` environments | `neco-base64`, `neco-cid`, `neco-json` (separate repo) | none |
 | [`neco-car`](./neco-car) | CAR v1 parser and writer for content-addressable archives | `neco-cbor`, `neco-cid` | none |
 
 ### Cryptography
@@ -103,7 +101,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
-| [`neco-nodegraph`](./neco-nodegraph) | rendering-agnostic node graph data model | (`neco-json`) | none |
+| [`neco-nodegraph`](./neco-nodegraph) | rendering-agnostic node graph data model | (`neco-json` separate repo) | none |
 | [`neco-edge-routing`](./neco-edge-routing) | 2D edge routing primitives for node graphs | (`neco-spline`, `neco-nurbs`) | none |
 | [`neco-edge-routing-wasm`](./neco-edge-routing-wasm) | WebAssembly bindings for `neco-edge-routing` | `neco-edge-routing` | `wasm-bindgen`, `js-sys` |
 
@@ -127,7 +125,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
 | [`neco-tui`](./neco-tui) | minimal ANSI terminal helpers | none | none |
-| [`neco-argparse`](./neco-argparse) | CLI argument parser backed by `neco-json` | `neco-json` | none |
+| [`neco-argparse`](./neco-argparse) | CLI argument parser backed by `neco-json` | `neco-json` (separate repo) | none |
 
 Most crates are intentionally independent so they can be published and consumed separately on crates.io. The repository is a monorepo for maintenance convenience, not a runtime-coupled framework.
 

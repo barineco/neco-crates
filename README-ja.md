@@ -9,7 +9,7 @@
 ## crate 一覧
 
 外部依存は、常時依存を先に書き、optional な依存を括弧内にまとめています。
-`serde` の表記は opt-in な `Serialize` / `Deserialize` 対応を示します。JSON 専用の入出力は [`neco-json`](./neco-json) が担います。
+`serde` の表記は opt-in な `Serialize` / `Deserialize` 対応を示します。JSON および KDL 専用のパーサーとシリアライザは別 repo の [`barineco/neco-parser`](https://github.com/barineco/neco-parser) に移管しました ( `neco-json` / `neco-kdl` )。
 
 ### 幾何とメッシュ
 
@@ -59,12 +59,10 @@
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
-| [`neco-json`](./neco-json) | `no_std` 環境で動作する最小 JSON コーデック | なし | なし |
-| [`neco-kdl`](./neco-kdl) | KDL v2 パーサーとシリアライザ | なし | なし |
 | [`neco-base58`](./neco-base58) | Base58BTC エンコーダとデコーダ | なし | なし |
 | [`neco-base64`](./neco-base64) | Base64 エンコーダとデコーダ | なし | なし |
 | [`neco-cid`](./neco-cid) | CIDv1 とマルチベースコア | `neco-sha2` | なし |
-| [`neco-cbor`](./neco-cbor) | `no_std` 環境向け CBOR / DAG-CBOR コーデック | `neco-base64`, `neco-cid`, `neco-json` | なし |
+| [`neco-cbor`](./neco-cbor) | `no_std` 環境向け CBOR / DAG-CBOR コーデック | `neco-base64`, `neco-cid`, `neco-json` (別 repo) | なし |
 | [`neco-car`](./neco-car) | コンテンツアドレス可能アーカイブ向け CAR v1 パーサーとライター | `neco-cbor`, `neco-cid` | なし |
 
 ### 暗号処理
@@ -101,7 +99,7 @@
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
-| [`neco-nodegraph`](./neco-nodegraph) | 描画非依存のノードグラフモデル | （`neco-json`） | なし |
+| [`neco-nodegraph`](./neco-nodegraph) | 描画非依存のノードグラフモデル | ( `neco-json` 別 repo ) | なし |
 | [`neco-edge-routing`](./neco-edge-routing) | ノードグラフ向けの 2D エッジルーティング | （`neco-spline`, `neco-nurbs`） | なし |
 | [`neco-edge-routing-wasm`](./neco-edge-routing-wasm) | `neco-edge-routing` の WebAssembly バインディング | `neco-edge-routing` | `wasm-bindgen`, `js-sys` |
 
@@ -125,7 +123,7 @@
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
 | [`neco-tui`](./neco-tui) | 最小限の ANSI ターミナル補助 | なし | なし |
-| [`neco-argparse`](./neco-argparse) | `neco-json` ベースの CLI 引数パーサー | `neco-json` | なし |
+| [`neco-argparse`](./neco-argparse) | `neco-json` ベースの CLI 引数パーサー | `neco-json` (別 repo) | なし |
 
 大半のcrateは crates.io で個別公開できるよう、意図的に独立性を保っています。運用は monorepo 体制ですが、実行時に密結合する単一フレームワークではありません。
 

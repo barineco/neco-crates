@@ -22,8 +22,6 @@ members = [
     "neco-galois",
     "neco-gf256",
     "neco-gridfield",
-    "neco-json",
-    "neco-kdl",
     "neco-kmeans",
     "neco-mesh",
     "neco-nodegraph",
