@@ -1,6 +1,6 @@
 [package]
 name = "neco-minphase"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -12,5 +12,5 @@ keywords = ["minimum-phase", "cepstrum", "convolution", "fft", "dsp"]
 categories = ["mathematics", "science", "algorithms"]
 
 [dependencies]
-neco-complex = { version = "0.1", path = "../neco-complex" }
-neco-stft = { version = "0.1", path = "../neco-stft" }
+neco-complex = { version = "=0.2.0", path = "../../../neco-algebra/neco-algebra-main/neco-complex" }
+neco-stft = { version = "=0.1.1", path = "../neco-stft" }

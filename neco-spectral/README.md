@@ -6,59 +6,93 @@ Spectral clustering and recursive graph partitioning for weighted and unweighted
 
 ## Clustering and partitioning
 
-For weighted graphs, the crate builds the unnormalized Laplacian
+For a weighted graph, the crate builds the unnormalized Laplacian:
 
-$$L = D - W,$$
+$$L = D - W.$$
 
-extracts the smallest informative eigenvectors with `neco-eigensolve`, row-normalizes the embedding, and runs `neco-kmeans` on that embedding.
+The degree matrix provides the mass matrix for a generalized eigenvalue problem. The resulting embedding is row-normalized before k-means assigns every node to a cluster. An isolated node remains in the result.
 
-For unweighted adjacency lists, it also includes spectral bisection, Kernighan-Lin refinement, and recursive partitioning.
+Unweighted adjacency lists can use spectral bisection, Kernighan-Lin refinement, and recursive partitioning.
 
 ## Usage
 
 ### Cluster a symmetric graph
 
 ```rust
-use neco_sparse::{CooMat, CsrMat};
+use neco_eigensolve::EigensolveConfig;
+use neco_linear_types::Shape;
+use neco_sparse::{CooMatrix, CsrMatrix};
 use neco_spectral::spectral_cluster;
 
-let mut coo = CooMat::new(100, 100);
-for (i, j, w) in edges {
-    coo.push(i, j, w);
-    coo.push(j, i, w);
+let shape = Shape::new(6, 6);
+let mut adjacency = CooMatrix::new(shape);
+for (left, right, weight) in [
+    (0, 1, 4.0),
+    (1, 2, 4.0),
+    (0, 2, 4.0),
+    (3, 4, 4.0),
+    (4, 5, 4.0),
+    (3, 5, 4.0),
+    (2, 3, 0.01),
+] {
+    adjacency.push(shape.row_index(left)?, shape.column_index(right)?, weight)?;
+    adjacency.push(shape.row_index(right)?, shape.column_index(left)?, weight)?;
 }
-let adj = CsrMat::from(&coo);
+let adjacency: CsrMatrix<f64> = adjacency.to_csr()?;
+let config = EigensolveConfig::new(2, 1.0e-9, 1.0e-9, 64)?;
+let result = spectral_cluster(&adjacency, 2, config, 32)?;
 
-let result = spectral_cluster(&adj, 3, 1e-6, 500, 100);
-println!("clusters: {}", result.n_clusters);
-println!("assignments: {}", result.assignments.len());
+println!("clusters: {}", result.cluster_count());
+println!("assignments: {}", result.assignments().len());
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ### Inspect the embedding
 
 ```rust
-let result = spectral_cluster(&adj, 3, 1e-6, 500, 100);
+# use neco_eigensolve::EigensolveConfig;
+# use neco_linear_types::Shape;
+# use neco_sparse::CooMatrix;
+# use neco_spectral::spectral_cluster;
+# let shape = Shape::new(2, 2);
+# let mut adjacency = CooMatrix::new(shape);
+# adjacency.push(shape.row_index(0)?, shape.column_index(1)?, 1.0)?;
+# adjacency.push(shape.row_index(1)?, shape.column_index(0)?, 1.0)?;
+# let adjacency = adjacency.to_csr()?;
+# let config = EigensolveConfig::new(1, 1.0e-9, 1.0e-9, 64)?;
+let result = spectral_cluster(&adjacency, 1, config, 32)?;
 
-// Row-normalized spectral embedding, one row per node
-for row in &result.eigenvectors {
+for row in result.embedding() {
     println!("{row:?}");
 }
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ## API
 
-| Item | Description |
-|------|-------------|
-| `spectral_cluster(adjacency, n_clusters, tol, max_eigen_iter, max_kmeans_iter)` | Run the full spectral clustering pipeline |
-| `spectral_bisect(graph)` | Split an unweighted graph with the second normalized-adjacency vector used by the current bisection routine |
-| `kl_refine(graph, part_a, part_b)` | Improve a bisection with Kernighan-Lin swaps |
-| `recursive_partition(graph, target_size)` | Recursively bisect until all parts are within the target size |
-| `count_cut_edges(graph, part_a, part_b)` | Count edges that cross between two partitions |
-| `SpectralResult` | Returns assignments, cluster count, embedding, and iteration counts |
-| `SpectralResult::assignments` | Cluster ID for each node |
-| `SpectralResult::eigenvectors` | Row-normalized embedding used by k-means |
-| `SpectralResult::eigen_iterations` | LOBPCG iteration count |
-| `SpectralResult::kmeans_iterations` | k-means iteration count |
+- Clustering:
+  - `spectral_cluster`
+  - `SpectralResult::assignments()`
+  - `SpectralResult::cluster_count()`
+  - `SpectralResult::embedding()`
+  - `SpectralResult::convergence()`
+  - `SpectralResult::kmeans_iterations()`
+  - `SpectralError`
+- Partitioning:
+  - `spectral_bisect(graph)`
+  - `kl_refine(graph, part_a, part_b)`
+  - `recursive_partition(graph, target_size)`
+  - `count_cut_edges(graph, part_a, part_b)`
+
+```text
+spectral_cluster(adjacency, cluster_count, eigensolve_config, max_kmeans_iterations)
+```
+
+## Preconditions
+
+- Square, finite, symmetric adjacency matrix.
+- Cluster count within `1..=node_count`.
+- Requested eigensolver mode count equal to cluster count.
 
 ## License
 

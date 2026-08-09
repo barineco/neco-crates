@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "neco-complex"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "neco-contact"
@@ -1018,11 +1018,25 @@ dependencies = [
 
 [[package]]
 name = "neco-eigensolve"
+version = "0.2.0"
+dependencies = [
+ "neco-complex",
+ "neco-generalized-eigen",
+ "neco-linear-dense",
+ "neco-linear-types",
+ "neco-sparse",
+]
+
+[[package]]
+name = "neco-eigensolve-faer"
 version = "0.1.0"
 dependencies = [
  "faer",
- "neco-sparse",
- "rayon",
+ "neco-complex",
+ "neco-eigensolve",
+ "neco-generalized-eigen",
+ "neco-linear-dense",
+ "neco-linear-types",
 ]
 
 [[package]]
@@ -1037,6 +1051,16 @@ name = "neco-galois"
 version = "0.1.0"
 dependencies = [
  "neco-sha2",
+]
+
+[[package]]
+name = "neco-generalized-eigen"
+version = "0.1.0"
+dependencies = [
+ "neco-complex",
+ "neco-linear-dense",
+ "neco-linear-types",
+ "neco-sparse",
 ]
 
 [[package]]
@@ -1066,6 +1090,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "neco-linear-dense"
+version = "0.1.0"
+dependencies = [
+ "neco-linear-types",
+]
+
+[[package]]
+name = "neco-linear-types"
+version = "0.1.0"
+
+[[package]]
 name = "neco-mesh"
 version = "0.1.0"
 dependencies = [
@@ -1078,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "neco-minphase"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neco-complex",
  "neco-stft",
@@ -1086,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "neco-modal"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neco-stft",
 ]
@@ -1174,14 +1209,20 @@ version = "0.1.0"
 
 [[package]]
 name = "neco-sparse"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "neco-linear-types",
+]
 
 [[package]]
 name = "neco-spectral"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "neco-eigensolve",
+ "neco-eigensolve-faer",
+ "neco-generalized-eigen",
  "neco-kmeans",
+ "neco-linear-types",
  "neco-sparse",
 ]
 
@@ -1198,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "neco-stft"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neco-complex",
 ]

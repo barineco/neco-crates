@@ -11,7 +11,7 @@ impl Spectrum {
     }
 
     pub(super) fn phase_at(&self, bin: usize) -> f64 {
-        self.bins[bin].arg()
+        self.bins[bin].argument()
     }
 }
 
@@ -30,7 +30,7 @@ pub(super) fn hann_window_spectrum(readout: &[f64]) -> Spectrum {
         fft.process(&mut windowed, &mut spectrum).unwrap();
 
         let bins = spectrum[..n_pos].to_vec();
-        let power = bins.iter().map(|c| c.norm_sqr()).collect();
+        let power = bins.iter().map(|c| c.norm_squared()).collect();
         Spectrum { bins, power }
     })
 }

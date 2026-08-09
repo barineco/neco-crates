@@ -1,0 +1,16 @@
+[package]
+name = "nal-080-registry-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+neco-eigensolve = "=0.2.0"
+neco-linear-types = "=0.1.0"
+neco-minphase = "=0.1.1"
+neco-modal = "=0.1.1"
+neco-sparse = "=0.2.0"
+neco-spectral = "=0.2.0"
+neco-stft = "=0.1.1"

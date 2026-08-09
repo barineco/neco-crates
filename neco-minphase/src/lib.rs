@@ -68,8 +68,8 @@ pub fn compute_min_phase_spectrum<T: DspFloat>(
         fft_fwd.process(&mut cepstrum_min, &mut min_log_spectrum)?;
 
         for bin in &mut min_log_spectrum {
-            let amplitude = bin.re.exp();
-            let phase = bin.im;
+            let amplitude = bin.real_value().exp();
+            let phase = bin.imaginary_value();
             *bin = Complex::new(amplitude * phase.cos(), amplitude * phase.sin());
         }
 
@@ -127,10 +127,7 @@ pub fn convolve_ola<T: DspFloat>(input: &[T], ir: &[T]) -> Result<Vec<T>, MinPha
 
             fft_fwd.process(&mut block, &mut block_spectrum)?;
             for (lhs, rhs) in block_spectrum.iter_mut().zip(ir_spectrum.iter()) {
-                let re = lhs.re * rhs.re - lhs.im * rhs.im;
-                let im = lhs.re * rhs.im + lhs.im * rhs.re;
-                lhs.re = re;
-                lhs.im = im;
+                *lhs *= *rhs;
             }
 
             fft_inv.process(&mut block_spectrum, &mut result)?;
@@ -247,8 +244,7 @@ mod tests {
 
         let max_err_db = (1..num_bins - 1)
             .filter_map(|i| {
-                let actual_mag =
-                    (spectrum[i].re * spectrum[i].re + spectrum[i].im * spectrum[i].im).sqrt();
+                let actual_mag = spectrum[i].norm_squared().sqrt();
                 let expected_mag = gain_curve[i];
                 (expected_mag > 0.01).then(|| (20.0 * (actual_mag / expected_mag).log10()).abs())
             })
@@ -332,8 +328,7 @@ mod tests {
 
         let max_err_db = (1..num_bins - 1)
             .filter_map(|i| {
-                let actual_mag =
-                    (spectrum[i].re * spectrum[i].re + spectrum[i].im * spectrum[i].im).sqrt();
+                let actual_mag = spectrum[i].norm_squared().sqrt();
                 let expected_mag = gain_curve_f32[i];
                 (expected_mag > 0.01).then(|| (20.0f32 * (actual_mag / expected_mag).log10()).abs())
             })
@@ -364,8 +359,7 @@ mod tests {
 
         let max_err_db = (1..num_bins - 1)
             .filter_map(|i| {
-                let actual_mag =
-                    (spectrum[i].re * spectrum[i].re + spectrum[i].im * spectrum[i].im).sqrt();
+                let actual_mag = spectrum[i].norm_squared().sqrt();
                 let expected_mag = gain_curve[i];
                 (expected_mag > 0.01).then(|| (20.0 * (actual_mag / expected_mag).log10()).abs())
             })

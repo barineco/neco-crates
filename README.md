@@ -29,11 +29,8 @@ External dependencies list always-on dependencies first, with optional ones grou
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
 | [`neco-array2`](./neco-array2) | lightweight row-major 2D array foundation for grid-oriented crates | none | (`serde`) |
-| [`neco-complex`](./neco-complex) | lightweight complex-number foundation for FFT- and solver-adjacent crates | none | none |
 | [`neco-gridfield`](./neco-gridfield) | uniform 2D grids and triple-buffered field state for time stepping | `neco-array2` | (`serde`) |
 | [`neco-contact`](./neco-contact) | Hertz contact and spatial helper routines on uniform 2D fields | `neco-array2` | none |
-| [`neco-sparse`](./neco-sparse) | sparse matrix data structures | none | none |
-| [`neco-eigensolve`](./neco-eigensolve) | sparse eigenvalue solvers | `neco-sparse` | (`rayon`, `faer`) |
 | [`neco-dop853`](./neco-dop853) | adaptive Dormand-Prince 8(5,3) ODE integration | none | none |
 | [`neco-stencil`](./neco-stencil) | finite-difference stencil operators on uniform 2D grids | none | (`rayon`) |
 
@@ -41,8 +38,8 @@ External dependencies list always-on dependencies first, with optional ones grou
 
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
-| [`neco-stft`](./neco-stft) | backend-agnostic real FFT facade, windows, and STFT / ISTFT | `neco-complex` | none |
-| [`neco-minphase`](./neco-minphase) | minimum-phase spectrum / impulse kernels and overlap-add convolution | `neco-stft`, `neco-complex` | none |
+| [`neco-stft`](./neco-stft) | backend-agnostic real FFT facade, windows, and STFT / ISTFT | none | neco-algebra packages |
+| [`neco-minphase`](./neco-minphase) | minimum-phase spectrum / impulse kernels and overlap-add convolution | `neco-stft` | neco-algebra packages |
 
 ### Clustering
 

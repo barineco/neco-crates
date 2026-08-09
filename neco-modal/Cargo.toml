@@ -1,6 +1,6 @@
 [package]
 name = "neco-modal"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -12,4 +12,4 @@ keywords = ["modal", "fft", "signal", "vibration", "analysis"]
 categories = ["mathematics", "science", "algorithms"]
 
 [dependencies]
-neco-stft = { version = "0.1", path = "../neco-stft" }
+neco-stft = { version = "=0.1.1", path = "../neco-stft" }

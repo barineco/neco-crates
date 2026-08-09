@@ -70,7 +70,7 @@ fn fft_bluestein_forward<T: DspFloat>(buffer: &mut [Complex<T>]) {
     let mut rhs = vec![Complex::new(T::zero(), T::zero()); conv_len];
     for i in 0..n {
         lhs[i] = buffer[i] * chirp_table[i];
-        let chirp_conj = chirp_table[i].conj();
+        let chirp_conj = chirp_table[i].conjugate();
         rhs[i] = chirp_conj;
         if i != 0 {
             rhs[conv_len - i] = chirp_conj;
@@ -100,11 +100,11 @@ pub fn fft_in_place<T: DspFloat>(buffer: &mut [Complex<T>], inverse: bool) {
     }
     if inverse {
         for value in buffer.iter_mut() {
-            *value = value.conj();
+            *value = value.conjugate();
         }
         fft_bluestein_forward(buffer);
         for value in buffer.iter_mut() {
-            *value = value.conj();
+            *value = value.conjugate();
         }
     } else {
         fft_bluestein_forward(buffer);
@@ -129,7 +129,7 @@ pub fn real_fft_inverse<T: DspFloat>(spectrum: &[Complex<T>], output: &mut [T]) 
         return;
     }
     if n == 1 {
-        output[0] = spectrum[0].re;
+        output[0] = spectrum[0].real_value();
         return;
     }
 
@@ -144,12 +144,12 @@ pub fn real_fft_inverse<T: DspFloat>(spectrum: &[Complex<T>], output: &mut [T]) 
         spectrum.len()
     };
     for k in 1..mirror_limit {
-        buffer[n - k] = spectrum[k].conj();
+        buffer[n - k] = spectrum[k].conjugate();
     }
 
     fft_in_place(&mut buffer, true);
     for (dst, src) in output.iter_mut().zip(buffer.iter()) {
-        *dst = src.re;
+        *dst = src.real_value();
     }
 }
 
@@ -167,8 +167,8 @@ mod tests {
         fft_in_place(&mut buffer, true);
         let scale = 1.0 / input.len() as f64;
         for (actual, expected) in buffer.iter().zip(input.iter()) {
-            assert!((actual.re * scale - expected.re).abs() < 1e-10);
-            assert!((actual.im * scale - expected.im).abs() < 1e-10);
+            assert!((actual.real_value() * scale - expected.real_value()).abs() < 1e-10);
+            assert!((actual.imaginary_value() * scale - expected.imaginary_value()).abs() < 1e-10);
         }
     }
 
@@ -182,8 +182,8 @@ mod tests {
         fft_in_place(&mut buffer, true);
         let scale = 1.0 / input.len() as f64;
         for (actual, expected) in buffer.iter().zip(input.iter()) {
-            assert!((actual.re * scale - expected.re).abs() < 1e-10);
-            assert!((actual.im * scale - expected.im).abs() < 1e-10);
+            assert!((actual.real_value() * scale - expected.real_value()).abs() < 1e-10);
+            assert!((actual.imaginary_value() * scale - expected.imaginary_value()).abs() < 1e-10);
         }
     }
 

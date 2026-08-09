@@ -27,11 +27,8 @@
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
 | [`neco-array2`](./neco-array2) | 格子系 crate 向けの軽量行優先 2D 配列基盤 | なし | （`serde`） |
-| [`neco-complex`](./neco-complex) | FFT 系とソルバー連携向けの軽量複素数基盤 | なし | なし |
 | [`neco-gridfield`](./neco-gridfield) | 一様 2D 格子と時間発展向けの三重バッファ状態管理 | `neco-array2` | （`serde`） |
 | [`neco-contact`](./neco-contact) | 一様 2D 場向けの Hertz 接触と空間補助機能 | `neco-array2` | なし |
-| [`neco-sparse`](./neco-sparse) | 疎行列データ構造 | なし | なし |
-| [`neco-eigensolve`](./neco-eigensolve) | 疎行列向け固有値ソルバ | `neco-sparse` | （`rayon`, `faer`） |
 | [`neco-dop853`](./neco-dop853) | 適応刻み Dormand-Prince 8(5,3) ODE 積分 | なし | なし |
 | [`neco-stencil`](./neco-stencil) | 一様 2D 格子向けの差分ステンシル演算 | なし | （`rayon`） |
 
