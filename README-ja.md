@@ -36,15 +36,15 @@
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
-| [`neco-stft`](./neco-stft) | バックエンド非依存の実数 FFT ファサード、窓関数、STFT / ISTFT | `neco-complex` | なし |
-| [`neco-minphase`](./neco-minphase) | 最小位相スペクトル・インパルスカーネルの重ね合わせ加算法（OLA） | `neco-stft`, `neco-complex` | なし |
+| [`neco-stft`](./neco-stft) | 実数の周波数変換、窓関数、短時間周波数変換 | なし | 別リポジトリの線形代数クレート |
+| [`neco-minphase`](./neco-minphase) | 最小位相スペクトル、インパルス応答、重ね合わせ加算 | `neco-stft` | 別リポジトリの線形代数クレート |
 
 ### クラスタリング
 
 | crate | 概要 | 内部依存 | 主な外部依存 |
 |---|---|---|---|
 | [`neco-kmeans`](./neco-kmeans) | k-means クラスタリング | なし | （`rayon`） |
-| [`neco-spectral`](./neco-spectral) | スペクトラルクラスタリング | `neco-sparse`, `neco-eigensolve`, `neco-kmeans` | なし |
+| [`neco-spectral`](./neco-spectral) | スペクトラルクラスタリング | `neco-kmeans` | 別リポジトリの線形代数クレート |
 
 ### 検索と順位付け
 

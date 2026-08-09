@@ -21,18 +21,19 @@ mod tests {
         let result = spectral_cluster(&adjacency, 2, config, 32)?;
         assert_eq!(result.assignments().len(), 4);
 
-        let fft_output = with_planner(|planner| {
+        let fft_output = with_planner(|planner: &mut dyn FftPlanner<f64>| {
             let fft = planner.plan_fft_forward(4);
             let mut fft_input = fft.make_input_vec();
             fft_input[0] = 1.0;
             let mut fft_output = fft.make_output_vec();
-            fft.process(&mut fft_input, &mut fft_output)?;
-            Ok::<_, neco_stft::FftError>(fft_output)
+            fft.process(&mut fft_input, &mut fft_output)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            Ok::<_, std::io::Error>(fft_output)
         })?;
         assert_eq!(fft_output.len(), 3);
 
         let spectrum = compute_min_phase_spectrum(&[1.0_f64, 1.0, 1.0], 4)?;
-        assert_eq!(spectrum.len(), 4);
+        assert_eq!(spectrum.len(), 3);
         let scalar = Complex::new(3.0_f64, 4.0);
         assert_eq!(scalar.norm_squared(), 25.0);
 
