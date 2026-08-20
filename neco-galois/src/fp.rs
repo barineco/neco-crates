@@ -2,47 +2,27 @@ use crate::bigint::U256;
 use core::cmp::Ordering;
 use core::marker::PhantomData;
 
-// -----------------------------------------------------------------------
-// PrimeField trait
-// -----------------------------------------------------------------------
-
-/// 素体のパラメータ。secp256k1 と P-256 の両曲線に使う。
+/// Montgomery 形式の素体に必要なパラメータです。
 pub trait PrimeField: Copy + Clone + PartialEq + Eq + 'static {
-    /// 素数 p
+    /// 素数またはスカラー体の位数です。
     const MODULUS: U256;
-    /// R² mod p (R = 2^256)。Montgomery 変換に使用。
+    /// `R = 2^256` に対する `R² mod p` です。
     const R_SQUARED: U256;
-    /// -p⁻¹ mod 2^64。REDC の Montgomery constant。
+    /// `-p⁻¹ mod 2^64` です。
     const INV: u64;
 }
 
-// -----------------------------------------------------------------------
-// REDC algorithm
-// -----------------------------------------------------------------------
-
-/// Computes `REDC(T) = T · R⁻¹ mod p` where `R = 2^256`.
-///
-/// Input: `T` as eight little-endian limbs with `T < p · R`.
-/// Output: a `U256` in the range `[0, p)`.
-///
-/// Implementation: CIOS (Coarsely Integrated Operand Scanning) with one
-/// conditional subtraction at the end.
+/// `R = 2^256` として `REDC(T) = T · R⁻¹ mod p` を返します。
+/// 入力はリトルエンディアンの 8 limb で `T < p · R` を満たす必要があります。
+/// 出力は CIOS 縮約と一回の条件付き減算による `[0, p)` の値です。
 #[inline(always)]
 pub fn redc<P: PrimeField>(t: [u64; 8]) -> U256 {
     let p = P::MODULUS;
-    let inv = P::INV; // -p⁻¹ mod 2^64
-
-    // 入力を可変バッファにコピー (9 limbs: 8 + 上位 overflow)
+    let inv = P::INV;
     let mut a = [0u64; 9];
     a[..8].copy_from_slice(&t);
-
-    // 4 ラウンドの Montgomery 縮約
     for i in 0..4usize {
-        // q_i = a[i] * INV mod 2^64
         let q = a[i].wrapping_mul(inv);
-
-        // a[i..i+5] += q * p, carry を伝播
-        // mac: (acc, x, y, c) -> acc = (acc + x*y + c) mod 2^64, new_carry = upper 64-bit
         let mut carry: u64 = 0;
 
         macro_rules! mac {
@@ -57,22 +37,13 @@ pub fn redc<P: PrimeField>(t: [u64; 8]) -> U256 {
         mac!(a[i + 1], q, p.l1);
         mac!(a[i + 2], q, p.l2);
         mac!(a[i + 3], q, p.l3);
-
-        // a[i+4] += carry (propagate into upper half)
         let (s, oc) = a[i + 4].overflowing_add(carry);
         a[i + 4] = s;
-        // overflowing_add から生じる追加 carry を次 limb に伝播
         if oc {
-            // oc が true になるのは a[i+4] = u64::MAX + carry が溢れる場合のみ
-            // 2p < 2^257 なので a[8] が 1 になる可能性がある
             let (s2, _) = a[i + 5].overflowing_add(1);
             a[i + 5] = s2;
         }
-        // a[i] は今 0 になっているはず（下位 limb は縮約済み）
-        // （実際は 0 に設定されているが読まれないので不要）
     }
-
-    // 結果は a[4..8] に入っている
     let result = U256 {
         l0: a[4],
         l1: a[5],
@@ -80,18 +51,12 @@ pub fn redc<P: PrimeField>(t: [u64; 8]) -> U256 {
         l3: a[7],
     };
     let overflow = a[8];
-
-    // CIOS output is always less than 2p, so a single conditional subtraction suffices.
     let (sub_r, borrow) = U256::sub(result, p);
     let need_sub = (overflow > 0) | !borrow;
     U256::select(result, sub_r, need_sub)
 }
 
-// -----------------------------------------------------------------------
-// Fp<P>: モンゴメリ形式の素体元
-// -----------------------------------------------------------------------
-
-/// 素体の元。内部値は Montgomery 形式 (a·R mod p)。
+/// Montgomery 形式で保持する素体の元です。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Fp<P: PrimeField> {
     inner: U256,
@@ -99,20 +64,18 @@ pub struct Fp<P: PrimeField> {
 }
 
 impl<P: PrimeField> Fp<P> {
-    /// ゼロ元
+    /// 加法単位元です。
     pub const ZERO: Fp<P> = Fp {
         inner: U256::ZERO,
         _p: PhantomData,
     };
 
-    /// 単位元 (1): Montgomery 形式では R mod p
-    /// ただし定数として使う場合は各特殊化で定義する
+    /// 乗法単位元を Montgomery 形式で返します。
     pub fn one() -> Fp<P> {
-        // 1 を Montgomery 形式に変換: montMul(1, R²) = R mod p
         Self::from_u256(U256::ONE)
     }
 
-    /// Montgomery 形式の内部表現から直接作成（redc 済みの値を渡す）
+    /// 縮約済みの Montgomery 形式の内部値から作成します。
     #[inline]
     pub fn from_montgomery(inner: U256) -> Fp<P> {
         Fp {
@@ -121,17 +84,15 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// 内部の Montgomery 形式の値を返す（上級者向け）
+    /// 縮約済みの Montgomery 形式の内部値を返します。
     #[inline]
     pub fn to_montgomery_inner(self) -> U256 {
         self.inner
     }
 
-    /// 通常の整数 n から Fp<P> に変換。
-    /// n は [0, p) の範囲を仮定（超えていても動作するが未定義）。
-    /// montMul(n, R²) = n·R mod p を計算。
+    /// 通常の整数を Montgomery 形式へ変換します。
+    /// 入力は `[0, p)` を想定しますが、現在は範囲外の入力も縮約した値を返します。
     pub fn from_u256(n: U256) -> Fp<P> {
-        // t = n * R² (512-bit)
         let t = U256::mul_wide(n, P::R_SQUARED);
         let inner = redc::<P>(t);
         Fp {
@@ -140,8 +101,7 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// Montgomery 形式から通常の整数に変換。
-    /// redc(inner) = inner · R⁻¹ mod p。
+    /// Montgomery 形式の値を通常の整数へ変換します。
     pub fn to_u256(self) -> U256 {
         let mut t = [0u64; 8];
         t[0] = self.inner.l0;
@@ -151,11 +111,10 @@ impl<P: PrimeField> Fp<P> {
         redc::<P>(t)
     }
 
-    /// Field addition. In Montgomery form: `(a·R + b·R) mod p = (a+b)·R mod p`.
+    /// 二つの Montgomery 形式の値を加算し、法による値を返します。
     #[inline]
     pub fn add(a: Fp<P>, b: Fp<P>) -> Fp<P> {
         let (sum, carry) = U256::add(a.inner, b.inner);
-        // sum >= p または carry のとき sum - p
         let (sub, borrow) = U256::sub(sum, P::MODULUS);
         let need_sub = carry | !borrow;
         Fp {
@@ -164,7 +123,7 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// Field negation: `-a = if a == 0 then 0 else p - a`.
+    /// 加法逆元を返します。ゼロの逆元はゼロです。
     #[inline]
     pub fn neg(a: Fp<P>) -> Fp<P> {
         if U256::is_zero(a.inner) {
@@ -178,14 +137,13 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// 減算 a - b = a + (-b)。
+    /// `a - b` を返します。
     #[inline]
     pub fn sub(a: Fp<P>, b: Fp<P>) -> Fp<P> {
         Self::add(a, Self::neg(b))
     }
 
-    /// Montgomery multiplication: `montMul(a, b) = redc(a * b) = a·b·R⁻¹ mod p`.
-    /// For Montgomery-form inputs: `montMul(a·R, b·R) = (a·b)·R mod p`.
+    /// 二つの Montgomery 形式の値を乗算し、Montgomery 形式の積を返します。
     #[inline]
     pub fn mul(a: Fp<P>, b: Fp<P>) -> Fp<P> {
         let t = U256::mul_wide(a.inner, b.inner);
@@ -195,13 +153,13 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// 自乗（最適化: 同じ値を 2 回掛ける）
+    /// 自乗を返します。
     #[inline]
     pub fn sqr(a: Fp<P>) -> Fp<P> {
         Self::mul(a, a)
     }
 
-    /// Square-and-multiply 乗冪。
+    /// 非負の指数による乗冪を返します。
     pub fn pow(base: Fp<P>, exp: U256) -> Fp<P> {
         let mut result = Self::one();
         let mut sq = base;
@@ -214,43 +172,27 @@ impl<P: PrimeField> Fp<P> {
         result
     }
 
-    /// Modular inverse via the binary extended GCD (Bezout identity over `[0, p)`).
-    /// Returns zero when `a == 0` (the conventional value for undefined input).
+    /// 拡張ユークリッド互除法で乗法逆元を返します。ゼロにはゼロを返します。
+    /// 係数は正負の組で保持し、最大 512 回で反復を停止します。
     pub fn inv(a: Fp<P>) -> Fp<P> {
-        // Montgomery 形式を通常整数に戻す
         let a_norm = a.to_u256();
         if U256::is_zero(a_norm) {
             return Fp::ZERO;
         }
 
         let p = P::MODULUS;
-        // Binary extended GCD: gcd(a, p) = 1 (p が素数なら保証)
-        // Bezout: s * a ≡ 1 (mod p)
-        // 符号付き計算のために (positive, negative) ペアで管理する
-        // u = (s1_pos, s1_neg, v): s_1 = s1_pos - s1_neg
-        // 入力: u=a, v=p
-        // 不変条件: u = s1 * a (mod p)、v = s2 * a (mod p)
 
-        let mut r0 = a_norm; // a
-        let mut r1 = p; // p
-                        // s0 * a ≡ r0 (mod p): s0 = 1
-                        // s1 * a ≡ r1 (mod p): s1 = 0
+        let mut r0 = a_norm;
+        let mut r1 = p;
         let mut s0_pos = U256::ONE;
         let mut s0_neg = U256::ZERO;
         let mut s1_pos = U256::ZERO;
         let mut s1_neg = U256::ZERO;
-
-        // 最大 512 反復で収束（256-bit に対して十分）
         for _ in 0..512 {
             if U256::is_zero(r1) {
                 break;
             }
-            // q = r0 / r1, rem = r0 mod r1 (u256 division)
             let (q, rem) = div_mod_u256(r0, r1);
-
-            // new_s = s0 - q * s1
-            // 符号付き: (s0_pos - s0_neg) - q * (s1_pos - s1_neg)
-            //         = (s0_pos + q*s1_neg) - (s0_neg + q*s1_pos)
             let qs1p = mul_mod_p(q, s1_pos, p);
             let qs1n = mul_mod_p(q, s1_neg, p);
 
@@ -264,35 +206,27 @@ impl<P: PrimeField> Fp<P> {
             r0 = r1;
             r1 = rem;
         }
-
-        // r0 == gcd == 1 (a != 0 かつ p が素数なら)
-        // s0 * a ≡ 1 (mod p)
-        // inv = (s0_pos - s0_neg) mod p
         let (diff, borrow) = U256::sub(s0_pos, s0_neg);
         let inv_norm = if borrow {
             let (d, _) = U256::add(diff, p);
             d
+        } else if let Ordering::Less = U256::cmp(diff, p) {
+            diff
         } else {
-            // 正規化: [0, p)
-            if let Ordering::Less = U256::cmp(diff, p) {
-                diff
-            } else {
-                let (d, _) = U256::sub(diff, p);
-                d
-            }
+            let (d, _) = U256::sub(diff, p);
+            d
         };
 
         Self::from_u256(inv_norm)
     }
 
-    /// Square root for primes with `p ≡ 3 (mod 4)`: `a^((p+1)/4) mod p`.
-    /// Existence is confirmed by squaring the candidate root and comparing to `a`.
+    /// `p ≡ 3 (mod 4)` の素数について平方根を返します。
+    /// 候補を自乗して入力と比較し、平方根がないときは `None` を返します。
     pub fn sqrt(a: Fp<P>, sqrt_exp: U256) -> Option<Fp<P>> {
         if U256::is_zero(a.inner) {
             return Some(Fp::ZERO);
         }
         let root = Self::pow(a, sqrt_exp);
-        // 検証: root² == a
         if Self::sqr(root).inner == a.inner {
             Some(root)
         } else {
@@ -300,31 +234,26 @@ impl<P: PrimeField> Fp<P> {
         }
     }
 
-    /// ゼロ判定
+    /// ゼロか判定します。
     #[inline]
     pub fn is_zero(a: Fp<P>) -> bool {
         U256::is_zero(a.inner)
     }
 
-    /// 等値判定（constant-time ではないが標準用途向け）
+    /// 二つの Montgomery 形式の内部値が等しいか判定します。
     #[inline]
     pub fn eq(a: Fp<P>, b: Fp<P>) -> bool {
         a.inner == b.inner
     }
 
-    /// 大小比較（スカラー体でのハーフオーダー判定などに使用）
+    /// 通常の整数へ正規化して大小を比較します。
     #[inline]
     pub fn cmp(a: Fp<P>, b: Fp<P>) -> core::cmp::Ordering {
-        // Montgomery 形式のまま比較するのは無効なので正規化して比較
         U256::cmp(a.to_u256(), b.to_u256())
     }
 }
 
-// -----------------------------------------------------------------------
-// 補助: u256 の単純除算（逆元計算用）
-// -----------------------------------------------------------------------
-
-/// (q, r) = a / b (u256 schoolbook 除算)
+/// 商と余りを返します。除数がゼロの場合は停止します。
 fn div_mod_u256(a: U256, b: U256) -> (U256, U256) {
     if U256::is_zero(b) {
         panic!("div_mod_u256: division by zero");
@@ -332,16 +261,12 @@ fn div_mod_u256(a: U256, b: U256) -> (U256, U256) {
     if let Ordering::Less = U256::cmp(a, b) {
         return (U256::ZERO, a);
     }
-    // シフト引き算法 (binary long division)
     let mut q = U256::ZERO;
     let mut r = U256::ZERO;
 
     for i in (0..256u32).rev() {
-        // r = r << 1 | bit(a, i)
         r = shift_left_1_with_bit(r, U256::bit(a, i));
-        // if r >= b: r -= b, q |= 1 << i
         if let Ordering::Less = U256::cmp(r, b) {
-            // r < b: do nothing
         } else {
             let (sub, _) = U256::sub(r, b);
             r = sub;
@@ -351,7 +276,7 @@ fn div_mod_u256(a: U256, b: U256) -> (U256, U256) {
     (q, r)
 }
 
-/// r = (r << 1) | bit
+/// 最下位ビットを加えて左へ一ビットシフトします。
 fn shift_left_1_with_bit(r: U256, bit: bool) -> U256 {
     U256 {
         l0: (r.l0 << 1) | (bit as u64),
@@ -361,7 +286,7 @@ fn shift_left_1_with_bit(r: U256, bit: bool) -> U256 {
     }
 }
 
-/// q の i ビット目を 1 にする
+/// 指定したビットを設定します。
 fn set_bit(mut q: U256, i: u32) -> U256 {
     match i / 64 {
         0 => q.l0 |= 1u64 << (i % 64),
@@ -373,37 +298,25 @@ fn set_bit(mut q: U256, i: u32) -> U256 {
     q
 }
 
-/// a * b mod p（大きな積を p で割る。逆元計算用補助）
+/// `a * b mod p` を返します。途中の limb ごとの計算は結果に用いず、最終的に `u512_mod_p` を使用します。
 fn mul_mod_p(a: U256, b: U256, p: U256) -> U256 {
-    // 512-bit 積を p で割る（schoolbook）
-    // ただし a, b < p < 2^256 なので 512-bit 積 → div_mod
-    // 効率は重要ではない（逆元計算は非ホットパス）
     let wide = U256::mul_wide(a, b);
-    // wide を U512 として扱い、p で除算
     let mut rem = U256::ZERO;
     for i in (0..8usize).rev() {
-        // rem = rem * 2^64 + wide[i]
-        // = shift_left_64(rem) + wide[i]
         rem = U256 {
             l0: wide[i],
             l1: rem.l0,
             l2: rem.l1,
             l3: rem.l2,
         };
-        // rem.l3 の carry 相当は捨てる（wide は 8 limb あるのでここでは上位を保存できない）
-        // 代わりに正しい実装が必要: 512-bit を p で剰余
-        // 上位ビットが残る可能性があるので、より堅牢な方法を使う
-        let _ = rem.l3; // suppress warning
+        let _ = rem.l3;
     }
-    // 上記のアプローチは不完全。正しい 512-bit mod p を実装する
     u512_mod_p(wide, p)
 }
 
-/// 512-bit 値 t (= wide[0..8]) を p で割った余り
+/// 512 ビット値を法で縮約します。
 fn u512_mod_p(t: [u64; 8], p: U256) -> U256 {
-    // Binary long division for 512-bit by 256-bit
     let mut rem = U256::ZERO;
-    // 上位 256-bit から処理
     for i in (0..8usize).rev() {
         for bit_pos in (0..64u32).rev() {
             let bit = ((t[i] >> bit_pos) & 1) != 0;
@@ -417,17 +330,13 @@ fn u512_mod_p(t: [u64; 8], p: U256) -> U256 {
     rem
 }
 
-/// (a + b) mod p（補助）
+/// `a + b mod p` を返します。
 fn add_mod_p(a: U256, b: U256, p: U256) -> U256 {
     let (sum, carry) = U256::add(a, b);
     let (sub, borrow) = U256::sub(sum, p);
     let need_sub = carry | !borrow;
     U256::select(sum, sub, need_sub)
 }
-
-// -----------------------------------------------------------------------
-// Tests
-// -----------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -440,9 +349,6 @@ mod tests {
     fn fe(n: u64) -> Fq {
         Fq::from_u256(U256::from_u64(n))
     }
-
-    // --- フィールド公理ランダムテスト (27本 = 9 公理 × 3 入力セット) ---
-    // 入力: a=2, b=3, c=5 / a=7, b=11, c=13 / a=100, b=200, c=300
 
     macro_rules! field_axioms_tests {
         ($mod_name:ident, $type:ty, $fe_fn:ident) => {
@@ -488,7 +394,6 @@ mod tests {
 
                 #[test]
                 fn add_neg_s1() {
-                    // a + (-a) = 0
                     let a = $fe_fn(2);
                     assert_eq!(F::add(a, F::neg(a)), F::ZERO);
                 }
@@ -553,7 +458,6 @@ mod tests {
 
                 #[test]
                 fn inv_mul_s1() {
-                    // a * inv(a) = 1
                     let a = $fe_fn(2);
                     let one = F::one();
                     assert_eq!(F::mul(a, F::inv(a)), one);
@@ -571,7 +475,6 @@ mod tests {
 
                 #[test]
                 fn add_sub_roundtrip_s1() {
-                    // a + b - b = a
                     let (a, b) = ($fe_fn(2), $fe_fn(3));
                     assert_eq!(F::sub(F::add(a, b), b), a);
                 }
@@ -594,11 +497,8 @@ mod tests {
     field_axioms_tests!(p256_field, Fp<P256Field>, fe_p256);
     field_axioms_tests!(p256_order, Fp<P256Order>, fe_p256order);
 
-    // --- sqrt テスト (4本) ---
-
     #[test]
     fn sqrt_known_qr_secp() {
-        // 4 は完全平方数: sqrt(4) = 2
         let four = fe(4);
         let sqrt_exp = crate::secp256k1::SQRT_EXP_SECP256K1;
         let root = Fq::sqrt(four, sqrt_exp).expect("sqrt(4) must exist");
@@ -624,19 +524,12 @@ mod tests {
 
     #[test]
     fn sqrt_qnr() {
-        // secp256k1 の p-1 は QNR
-        // (p-1) = p - 1 → from_u256 でも大丈夫
         let p_minus_1 = Fq::from_u256({
             let (v, _) = U256::sub(Secp256k1Field::MODULUS, U256::ONE);
             v
         });
         let sqrt_exp = crate::secp256k1::SQRT_EXP_SECP256K1;
-        // p-1 は secp256k1 上で QNR であることが知られている
-        // (Euler 基準: (p-1)^((p-1)/2) = (-1)^((p-1)/2) mod p)
-        // ここでは sqrt が None を返すことを確認
         let result = Fq::sqrt(p_minus_1, sqrt_exp);
-        // p-1 が QNR なら None、QR なら Some
-        // secp256k1 の p ≡ 3 (mod 4) なので -1 は QNR
         assert!(result.is_none(), "p-1 should not be a QR for secp256k1");
     }
 }

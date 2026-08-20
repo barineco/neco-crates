@@ -13,10 +13,6 @@ use crate::vec3;
 
 use super::tolerance::BOUNDARY_TOL;
 
-// ─── SurfaceOfRevolution inverse projection ────────────────────
-
-/// Inverse projection onto SurfaceOfRevolution.
-/// Returns (theta, v, nearest_point) for the closest point on the surface.
 #[allow(clippy::too_many_arguments)]
 fn project_to_revolution(
     center: &[f64; 3],
@@ -36,24 +32,19 @@ fn project_to_revolution(
     let bu = vec3::normalized(*frame_u);
     let bv = vec3::normalized(*frame_v);
 
-    // Compute theta
     let q = vec3::sub(*p, *center);
     let dot_u = vec3::dot(q, bu);
     let dot_v = vec3::dot(q, bv);
     let theta_raw = dot_v.atan2(dot_u);
 
-    // Normalize theta_raw into [theta_start, theta_start + theta_range]
     let theta = if theta_range >= TAU - 1e-12 {
-        // Full revolution: normalize relative to theta_start
         let offset = (theta_raw - theta_start).rem_euclid(TAU);
         theta_start + offset
     } else {
-        // Partial revolution: clamp to nearest end if beyond range
         let offset = (theta_raw - theta_start).rem_euclid(TAU);
         if offset <= theta_range {
             theta_start + offset
         } else {
-            // Clamp to nearest end
             let dist_to_start = offset.min(TAU - offset);
             let dist_to_end = (offset - theta_range).min(TAU - offset + theta_range);
             if dist_to_start <= dist_to_end {
@@ -64,7 +55,6 @@ fn project_to_revolution(
         }
     };
 
-    // Project p onto meridional plane: (r_target, z_target)
     let cos_t = theta.cos();
     let sin_t = theta.sin();
     let radial_dir = vec3::add(vec3::scale(bu, cos_t), vec3::scale(bv, sin_t));
@@ -84,9 +74,6 @@ fn project_to_revolution(
     (theta, best_v, nearest)
 }
 
-// ─── Surface distance / normal helpers ────────────────────────
-
-/// Unsigned distance from a point to a surface.
 pub(crate) fn surface_distance_to(surface: &Surface, point: &[f64; 3]) -> Option<f64> {
     match surface {
         Surface::Plane { origin, normal } => {
@@ -138,7 +125,6 @@ pub(crate) fn surface_distance_to(surface: &Surface, point: &[f64; 3]) -> Option
             let s = vec3::dot(q, *axis);
             let q_perp = vec3::sub(q, vec3::scale(*axis, s));
             let r_perp = vec3::length(q_perp);
-            // Distance from tube center minus minor_radius
             let dx = r_perp - major_radius;
             let dist_to_tube_center = (dx * dx + s * s).sqrt();
             Some((dist_to_tube_center - minor_radius).abs())
@@ -187,7 +173,6 @@ pub(crate) fn surface_distance_to(surface: &Surface, point: &[f64; 3]) -> Option
     }
 }
 
-/// Outward normal at a point on (or near) the surface.
 pub(crate) fn surface_normal_at(surface: &Surface, point: &[f64; 3]) -> Option<[f64; 3]> {
     match surface {
         Surface::Plane { normal, .. } => Some(*normal),
@@ -218,7 +203,6 @@ pub(crate) fn surface_normal_at(surface: &Surface, point: &[f64; 3]) -> Option<[
             let cos_a = half_angle.cos();
             let sin_a = half_angle.sin();
             let radial = vec3::scale(q_perp, 1.0 / len);
-            // normal = cos(a)*radial - sin(a)*axis
             let n = vec3::sub(vec3::scale(radial, cos_a), vec3::scale(a, sin_a));
             let n_len = vec3::length(n);
             if n_len < 1e-30 {
@@ -257,7 +241,6 @@ pub(crate) fn surface_normal_at(surface: &Surface, point: &[f64; 3]) -> Option<[
             if r_perp < 1e-30 {
                 return None;
             }
-            // tube_center: closest point on the major circle
             let tube_center = vec3::add(*center, vec3::scale(q_perp, *major_radius / r_perp));
             let n = vec3::sub(*point, tube_center);
             let n_len = vec3::length(n);
@@ -306,16 +289,12 @@ pub(crate) fn surface_normal_at(surface: &Surface, point: &[f64; 3]) -> Option<[
     }
 }
 
-// ─── classify_subface ───────────────────────────────────────
-
-/// Classify a SubFace centroid against the other shell
 fn classify_subface(sf: &SubFace, other_shell: &Shell) -> Location3D {
     let c = find_interior_point(&sf.polygon, &sf.surface);
     let inward_probe = surface_normal_at(&sf.surface, &c)
         .map(|n| vec3::sub(c, vec3::scale(n, BOUNDARY_TOL * 4.0)))
         .unwrap_or(c);
 
-    // Boundary check: is the centroid on any face of the other shell?
     for face in &other_shell.faces {
         let dist = match surface_distance_to(&face.surface, &c) {
             Some(d) => d,
@@ -490,7 +469,7 @@ fn triangle_centroid(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> [f64; 3] {
     vec3::scale(vec3::add(vec3::add(a, b), c), 1.0 / 3.0)
 }
 
-/// Select SubFaces according to the boolean operation type.
+/// 二つの shell に対する位置と面の向きから、ブール演算後に残す部分面を選びます。
 pub fn select_faces(
     sub_a: &[SubFace],
     sub_b: &[SubFace],
@@ -537,7 +516,6 @@ pub fn select_faces(
             ),
             BooleanOp::Subtract => {
                 if relation == SelectionRelation::Inside {
-                    // B inner faces are flipped and added
                     let mut flipped = sf.clone();
                     flip_subface(&mut flipped);
                     result.push(flipped);
@@ -881,6 +859,7 @@ fn subface_signature(sf: &SubFace) -> Option<(Vec<i64>, Vec<[i64; 2]>, bool)> {
     Some((surface_sig, ring, sf.flipped))
 }
 
+/// 選択済みの部分面から重複を除き、同一平面上の部分面を結合します。
 pub fn normalize_selected_subfaces(sub_faces: Vec<SubFace>) -> Vec<SubFace> {
     let mut seen = BTreeSet::new();
     let mut result = Vec::new();
@@ -1186,13 +1165,11 @@ fn flip_subface(sf: &mut SubFace) {
         | Surface::Torus { .. }
         | Surface::SurfaceOfRevolution { .. }
         | Surface::SurfaceOfSweep { .. }
-        | Surface::NurbsSurface { .. } => {
-            // Curved surface flip: polygon winding only (normal implicitly flips)
-        }
+        | Surface::NurbsSurface { .. } => {}
     }
 }
 
-/// Build a Shell from SubFaces.
+/// 部分面の向きを各曲面に合わせ、元の面と交線候補から辺を復元して shell を作ります。入力が空の場合は失敗します。
 pub fn build_shell_from_subfaces(
     sub_faces: &[SubFace],
     shell_a: &Shell,
@@ -1745,8 +1722,6 @@ fn point_parameter_on_nurbs_curve(curve: &Curve3D, point: &[f64; 3]) -> Option<f
     (refined_distance < 5e-3).then_some(refined)
 }
 
-// ─── Tests ─────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1839,10 +1814,8 @@ mod tests {
             axis: [0.0, 1.0, 0.0],
             radius: 1.0,
         };
-        // Point on cylinder surface
         let on_surface = [1.0, 0.5, 0.0];
         assert!(surface_distance_to(&cyl, &on_surface).unwrap() < 1e-10);
-        // Point 0.5 away from cylinder surface
         let off = [1.5, 0.5, 0.0];
         assert!((surface_distance_to(&cyl, &off).unwrap() - 0.5).abs() < 1e-10);
     }
@@ -1866,10 +1839,8 @@ mod tests {
             axis: [0.0, 1.0, 0.0],
             half_angle: std::f64::consts::FRAC_PI_4, // 45°
         };
-        // tan(45deg) = 1, so radius at y=1 is 1.0
         let on = [1.0, 1.0, 0.0];
         assert!(surface_distance_to(&cone, &on).unwrap() < 1e-10);
-        // radius at y=2 is 2.0
         let on2 = [0.0, 2.0, 2.0];
         assert!(surface_distance_to(&cone, &on2).unwrap() < 1e-10);
     }
@@ -1882,13 +1853,10 @@ mod tests {
             major_radius: 3.0,
             minor_radius: 1.0,
         };
-        // x-axis, outer: major + minor = 4.0
         let outer = [4.0, 0.0, 0.0];
         assert!(surface_distance_to(&torus, &outer).unwrap() < 1e-10);
-        // x-axis, inner: major - minor = 2.0
         let inner = [2.0, 0.0, 0.0];
         assert!(surface_distance_to(&torus, &inner).unwrap() < 1e-10);
-        // Off-surface point
         let off = [5.0, 0.0, 0.0];
         assert!((surface_distance_to(&torus, &off).unwrap() - 1.0).abs() < 1e-10);
     }
@@ -1925,7 +1893,6 @@ mod tests {
             axis: [0.0, 1.0, 0.0],
             half_angle: std::f64::consts::FRAC_PI_4,
         };
-        // 45deg cone: normal = radial*cos(45) - axis*sin(45) = (1/sqrt2, -1/sqrt2, 0)
         let n = surface_normal_at(&cone, &[1.0, 1.0, 0.0]).unwrap();
         let expected_x = 1.0_f64 / 2.0_f64.sqrt();
         let expected_y = -1.0_f64 / 2.0_f64.sqrt();
@@ -1942,7 +1909,6 @@ mod tests {
             major_radius: 3.0,
             minor_radius: 1.0,
         };
-        // Outer point (4,0,0) -> tube_center (3,0,0) -> normal (1,0,0)
         let n = surface_normal_at(&torus, &[4.0, 0.0, 0.0]).unwrap();
         assert!((n[0] - 1.0).abs() < 1e-10);
         assert!(n[1].abs() < 1e-10);

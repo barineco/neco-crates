@@ -1,4 +1,4 @@
-//! Minimal secp256k1 and Nostr signing core.
+//! secp256k1 の鍵と Nostr 署名を提供する。
 
 mod error;
 pub mod event;
@@ -498,7 +498,6 @@ mod tests {
         let first = nostr::finalize_event(event.clone(), &secret).expect("first");
         let second = nostr::finalize_event(event, &secret).expect("second");
 
-        // id 以外のメタデータは一致するが、sig は aux_rand が異なるため不一致
         assert_eq!(first.id, second.id);
         assert_eq!(first.pubkey, second.pubkey);
         assert_ne!(first.sig, second.sig);

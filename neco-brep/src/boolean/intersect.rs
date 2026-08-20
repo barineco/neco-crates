@@ -1,24 +1,18 @@
-//! NURBS curve intersection via Bezier clipping.
-//!
-//! 1. Decompose both curves into Bezier spans
-//! 2. AABB overlap test per span pair
-//! 3. Recursive AABB bisection on overlapping pairs
-//! 4. Newton refinement after convergence
-//! 5. Merge nearby intersections
+//! NURBS 曲線の交差を求める処理。
 
 use super::{dist2, Intersection};
 use neco_nurbs::NurbsCurve2D;
 
-/// Convergence threshold on parameter range
+/// 二つのパラメータ範囲がともにこの値未満なら収束と判定します。
 const CONVERGENCE_EPS: f64 = 1e-10;
-/// Maximum recursion depth
+/// 再帰分割の上限です。
 const MAX_DEPTH: usize = 50;
-/// Merge tolerance in parameter space
+/// パラメータ空間での交差点統合許容差です。
 const MERGE_TOL: f64 = 1e-6;
-/// Merge tolerance in spatial distance
+/// 座標空間での交差点統合許容差です。
 const MERGE_SPATIAL_TOL: f64 = 1e-6;
 
-/// Find all intersections between two NURBS curves.
+/// 二つの NURBS 曲線の点交差と共線の重複区間を返します。
 pub fn find_intersections(a: &NurbsCurve2D, b: &NurbsCurve2D) -> Vec<Intersection> {
     let spans_a = a.to_bezier_spans();
     let spans_b = b.to_bezier_spans();
@@ -27,14 +21,12 @@ pub fn find_intersections(a: &NurbsCurve2D, b: &NurbsCurve2D) -> Vec<Intersectio
 
     for span_a in &spans_a {
         for span_b in &spans_b {
-            // AABB overlap test (control point bbox contains the Bezier convex hull)
             let (a_min, a_max) = span_a.bounding_box();
             let (b_min, b_max) = span_b.bounding_box();
             if !aabb_overlap(&a_min, &a_max, &b_min, &b_max) {
                 continue;
             }
 
-            // Global parameter range
             let n_a = span_a.control_points.len();
             let n_b = span_b.control_points.len();
             let ta_min = span_a.knots[span_a.degree];
@@ -42,7 +34,6 @@ pub fn find_intersections(a: &NurbsCurve2D, b: &NurbsCurve2D) -> Vec<Intersectio
             let tb_min = span_b.knots[span_b.degree];
             let tb_max = span_b.knots[n_b];
 
-            // Recursive bisection
             subdivide_and_intersect(
                 a,
                 b,
@@ -58,17 +49,14 @@ pub fn find_intersections(a: &NurbsCurve2D, b: &NurbsCurve2D) -> Vec<Intersectio
         }
     }
 
-    // Merge nearby intersections
     merge_intersections(&mut raw_intersections);
     raw_intersections
 }
 
-/// AABB overlap test
 fn aabb_overlap(a_min: &[f64; 2], a_max: &[f64; 2], b_min: &[f64; 2], b_max: &[f64; 2]) -> bool {
     a_min[0] <= b_max[0] && a_max[0] >= b_min[0] && a_min[1] <= b_max[1] && a_max[1] >= b_min[1]
 }
 
-/// Line segment intersection (analytic). Returns overlap endpoints for collinear case.
 fn intersect_line_segments(
     original_a: &NurbsCurve2D,
     original_b: &NurbsCurve2D,
@@ -93,12 +81,10 @@ fn intersect_line_segments(
     const EPS: f64 = 1e-10;
 
     if cross_ab.abs() < EPS {
-        // Parallel or collinear
         if cross_aq.abs() > EPS {
-            return; // Parallel but separated
+            return;
         }
-        // Collinear: register overlap interval endpoints
-        // Project Q0, Q1 onto A's parameter space
+
         let len_a_sq = da[0] * da[0] + da[1] * da[1];
         if len_a_sq < EPS {
             return;
@@ -113,17 +99,15 @@ fn intersect_line_segments(
             (proj_q1, proj_q0)
         };
 
-        // Overlap interval: [max(0, s_min), min(1, s_max)]
         let overlap_start = s_min.max(0.0);
         let overlap_end = s_max.min(1.0);
         if overlap_start >= overlap_end - EPS {
-            // Point contact case
             if (overlap_start - overlap_end).abs() < EPS
                 && (-EPS..=1.0 + EPS).contains(&overlap_start)
             {
                 let ta = ta_min + overlap_start.clamp(0.0, 1.0) * (ta_max - ta_min);
                 let pt = original_a.evaluate(ta);
-                // Recover B-side parameter
+
                 let len_b_sq = db[0] * db[0] + db[1] * db[1];
                 if len_b_sq > EPS {
                     let dp = [pt[0] - q0[0], pt[1] - q0[1]];
@@ -140,7 +124,7 @@ fn intersect_line_segments(
             }
             return;
         }
-        // Register overlap as a single interval
+
         let ta_start = ta_min + overlap_start.clamp(0.0, 1.0) * (ta_max - ta_min);
         let ta_end = ta_min + overlap_end.clamp(0.0, 1.0) * (ta_max - ta_min);
         let len_b_sq = db[0] * db[0] + db[1] * db[1];
@@ -163,7 +147,6 @@ fn intersect_line_segments(
         return;
     }
 
-    // Non-parallel: standard line segment intersection
     let t = (dq[0] * db[1] - dq[1] * db[0]) / cross_ab;
     let u = (dq[0] * da[1] - dq[1] * da[0]) / cross_ab;
 
@@ -181,10 +164,6 @@ fn intersect_line_segments(
     }
 }
 
-/// Recursive AABB bisection for intersection finding.
-///
-/// Bisects the longer parameter range; recurses only when BBs overlap.
-/// Degree-1 pairs (lines) are solved analytically.
 #[allow(clippy::too_many_arguments)]
 fn subdivide_and_intersect(
     original_a: &NurbsCurve2D,
@@ -198,14 +177,12 @@ fn subdivide_and_intersect(
     depth: usize,
     result: &mut Vec<Intersection>,
 ) {
-    // Control-point AABB overlap test
     let (a_min, a_max) = curve_a.bounding_box();
     let (b_min, b_max) = curve_b.bounding_box();
     if !aabb_overlap(&a_min, &a_max, &b_min, &b_max) {
         return;
     }
 
-    // Degree-1 pair (lines): analytic solution including collinear case
     if curve_a.degree == 1 && curve_b.degree == 1 {
         intersect_line_segments(
             original_a, original_b, ta_min, ta_max, tb_min, tb_max, result,
@@ -216,14 +193,12 @@ fn subdivide_and_intersect(
     let range_a = ta_max - ta_min;
     let range_b = tb_max - tb_min;
 
-    // Convergence check
     if range_a < CONVERGENCE_EPS && range_b < CONVERGENCE_EPS {
         let ta_mid = 0.5 * (ta_min + ta_max);
         let tb_mid = 0.5 * (tb_min + tb_max);
         if let Some(ix) = newton_refine(original_a, original_b, ta_mid, tb_mid) {
             result.push(ix);
         } else {
-            // Record even if Newton did not converge, if points are close enough
             let pa = original_a.evaluate(ta_mid);
             let pb = original_b.evaluate(tb_mid);
             if dist2(pa, pb) < 1e-6 {
@@ -237,7 +212,6 @@ fn subdivide_and_intersect(
         return;
     }
 
-    // Maximum depth
     if depth >= MAX_DEPTH {
         let ta_mid = 0.5 * (ta_min + ta_max);
         let tb_mid = 0.5 * (tb_min + tb_max);
@@ -253,7 +227,6 @@ fn subdivide_and_intersect(
         return;
     }
 
-    // Bisect the longer range
     if range_a >= range_b {
         let ta_mid = 0.5 * (ta_min + ta_max);
         let (left_a, right_a) = curve_a.split_at(ta_mid);
@@ -311,9 +284,7 @@ fn subdivide_and_intersect(
     }
 }
 
-/// Newton refinement of intersection point.
-///
-/// Solves S1(ta) = S2(tb) using finite-difference tangents.
+/// `S1(ta) = S2(tb)` を有限差分の接線で解きます。
 fn newton_refine(
     a: &NurbsCurve2D,
     b: &NurbsCurve2D,
@@ -346,7 +317,6 @@ fn newton_refine(
             });
         }
 
-        // Finite-difference tangents
         let ta_fwd = (ta + h).min(ta_hi);
         let tb_fwd = (tb + h).min(tb_hi);
         let pa_fwd = a.evaluate(ta_fwd);
@@ -364,8 +334,6 @@ fn newton_refine(
         let dbx = (pb_fwd[0] - pb[0]) / dt_b;
         let dby = (pb_fwd[1] - pb[1]) / dt_b;
 
-        // J = [[dax, -dbx], [day, -dby]]
-        // J * [dta, dtb]^T = -[dx, dy]^T
         let det = dax * (-dby) - (-dbx) * day;
         if det.abs() < 1e-20 {
             break;
@@ -392,7 +360,6 @@ fn newton_refine(
     }
 }
 
-/// Merge nearby intersections
 fn merge_intersections(intersections: &mut Vec<Intersection>) {
     if intersections.len() <= 1 {
         return;
@@ -451,15 +418,12 @@ fn merge_intersections(intersections: &mut Vec<Intersection>) {
 mod tests {
     use super::*;
 
-    /// Helper: create a degree-1 line NURBS
     fn make_line(p0: [f64; 2], p1: [f64; 2]) -> NurbsCurve2D {
         NurbsCurve2D::new(1, vec![p0, p1], vec![0.0, 0.0, 1.0, 1.0])
     }
 
     #[test]
     fn test_two_lines_intersect() {
-        // (0,0)->(2,2) and (0,2)->(2,0) intersection
-        // Expected: 1 intersection at (1,1), t_a=0.5, t_b=0.5
         let a = make_line([0.0, 0.0], [2.0, 2.0]);
         let b = make_line([0.0, 2.0], [2.0, 0.0]);
 
@@ -482,7 +446,6 @@ mod tests {
 
     #[test]
     fn test_quadratic_and_line() {
-        // Parabola: (0,0),(1,2),(2,0) degree=2 with horizontal line y=0.5
         let parabola = NurbsCurve2D::new(
             2,
             vec![[0.0, 0.0], [1.0, 2.0], [2.0, 0.0]],
@@ -498,7 +461,6 @@ mod tests {
             result.len()
         );
 
-        // Symmetric about x=1
         let mut xs: Vec<f64> = result
             .iter()
             .filter_map(|ix| {
@@ -521,7 +483,6 @@ mod tests {
 
     #[test]
     fn test_no_intersection() {
-        // Parallel horizontal lines
         let a = make_line([0.0, 0.0], [2.0, 0.0]);
         let b = make_line([0.0, 1.0], [2.0, 1.0]);
 
@@ -535,8 +496,6 @@ mod tests {
 
     #[test]
     fn test_arc_and_line() {
-        // Quarter circle (1,0)->(0,1) with line y=x
-        // Intersection: (sqrt(2)/2, sqrt(2)/2)
         let w = std::f64::consts::FRAC_1_SQRT_2;
         let arc = NurbsCurve2D::new_rational(
             2,
@@ -564,8 +523,6 @@ mod tests {
 
     #[test]
     fn test_two_circles_intersect() {
-        // Unit circle and circle centered at (1,0)
-        // Two intersections expected
         let w = std::f64::consts::FRAC_1_SQRT_2;
 
         let circle_a = NurbsCurve2D::new_rational(

@@ -1,13 +1,12 @@
-/// 2D view transform (pan & zoom).
+/// 二次元表示のパンとズームを保持する変換。
 ///
-/// `view_size` is the world-space height mapped to the canvas vertical extent.
-/// Smaller values mean more zoom.
+/// `view_size` はキャンバスの高さに対応するワールド座標の高さである。値が小さいほど拡大表示になる。
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct View2d {
     pub center_x: f64,
     pub center_y: f64,
-    /// World-space height visible on canvas. Always positive.
+    /// キャンバスに表示するワールド座標の高さ。常に正である。
     pub view_size: f64,
 }
 
@@ -22,7 +21,7 @@ impl Default for View2d {
 }
 
 impl View2d {
-    /// Set view parameters. `view_size` is clamped to positive.
+    /// 中心座標と表示高さを設定する。表示高さが小さすぎる値は `f64::EPSILON` にする。
     pub fn set(&mut self, center_x: f64, center_y: f64, view_size: f64) {
         self.center_x = center_x;
         self.center_y = center_y;
@@ -33,14 +32,14 @@ impl View2d {
         };
     }
 
-    /// Pan by pixel delta. Speed scales with `view_size / canvas_height`.
+    /// ピクセル移動量を `view_size / canvas_height` 倍して中心座標へ加える。
     pub fn pan(&mut self, dx: f64, dy: f64, canvas_height: f64) {
         let speed = self.view_size / canvas_height;
         self.center_x += dx * speed;
         self.center_y += dy * speed;
     }
 
-    /// Zoom centered on a canvas position. `delta > 0` zooms in.
+    /// キャンバス座標を中心にズームする。`delta > 0` は拡大し、その座標のワールド座標を保つ。
     pub fn zoom_at(
         &mut self,
         delta: f64,
@@ -51,7 +50,6 @@ impl View2d {
     ) {
         let factor = 1.0 + delta * 0.001;
 
-        // Record cursor world position before zoom
         let (wx, wy) = self.canvas_to_world(canvas_x, canvas_y, canvas_width, canvas_height);
 
         let new_view_size = self.view_size / factor;
@@ -61,13 +59,12 @@ impl View2d {
             new_view_size
         };
 
-        // Adjust center so cursor world position stays invariant
         let (wx2, wy2) = self.canvas_to_world(canvas_x, canvas_y, canvas_width, canvas_height);
         self.center_x += wx - wx2;
         self.center_y += wy - wy2;
     }
 
-    /// Convert canvas coordinates to world coordinates.
+    /// キャンバス座標をワールド座標へ変換する。キャンバス幅と高さは零以外でなければならない。
     pub fn canvas_to_world(
         &self,
         cx: f64,
@@ -81,7 +78,7 @@ impl View2d {
         (world_x, world_y)
     }
 
-    /// Convert world coordinates to canvas coordinates.
+    /// ワールド座標をキャンバス座標へ変換する。キャンバス幅と高さは零以外でなければならない。
     pub fn world_to_canvas(
         &self,
         wx: f64,
@@ -95,7 +92,7 @@ impl View2d {
         (canvas_x, canvas_y)
     }
 
-    /// Fit the entire world region into the canvas.
+    /// ワールド領域全体が収まる中心座標と表示高さを設定する。表示高さには 5% の余白を加える。
     pub fn fit(
         &mut self,
         world_width: f64,
@@ -114,11 +111,10 @@ impl View2d {
             fit_by_width
         };
 
-        // Add slight margin
         self.view_size = base * 1.05;
     }
 
-    /// Current zoom factor relative to a reference `view_size`.
+    /// 基準表示高さに対する現在の拡大率を返す。
     pub fn zoom_factor(&self, reference_view_size: f64) -> f64 {
         reference_view_size / self.view_size
     }
@@ -130,11 +126,9 @@ mod tests {
 
     const EPS: f64 = 1e-10;
 
-    /// canvas_to_world and world_to_canvas roundtrip
     #[test]
     fn coordinate_roundtrip() {
         let cases = [
-            // (center_x, center_y, view_size, canvas_w, canvas_h, cx, cy)
             (0.0, 0.0, 1.0, 800.0, 600.0, 400.0, 300.0),
             (100.0, 200.0, 50.0, 1920.0, 1080.0, 960.0, 540.0),
             (-10.0, 5.0, 0.5, 640.0, 480.0, 0.0, 0.0),
@@ -157,7 +151,6 @@ mod tests {
         }
     }
 
-    /// Reverse roundtrip: world_to_canvas then canvas_to_world
     #[test]
     fn coordinate_roundtrip_reverse() {
         let v = View2d {
@@ -172,7 +165,6 @@ mod tests {
         assert!((wx - wx2).abs() < EPS && (wy - wy2).abs() < EPS);
     }
 
-    /// zoom_at preserves cursor world position
     #[test]
     fn zoom_at_cursor_invariance() {
         let deltas = [100.0, -100.0, 500.0, -500.0, 1.0];
@@ -195,7 +187,6 @@ mod tests {
         }
     }
 
-    /// Pan distance scales proportionally with view_size
     #[test]
     fn pan_proportional_to_view_size() {
         let ch = 600.0;
@@ -220,7 +211,6 @@ mod tests {
         let move2_x = v2.center_x;
         let move2_y = v2.center_y;
 
-        // 2x view_size should yield 2x displacement
         assert!(
             (move2_x - move1_x * 2.0).abs() < EPS,
             "pan X proportionality violated: {move1_x} * 2 != {move2_x}"
@@ -231,22 +221,19 @@ mod tests {
         );
     }
 
-    /// fit ensures all four world corners are within canvas bounds
     #[test]
     fn fit_contains_world_region() {
         let cases = [
-            // (world_w, world_h, canvas_w, canvas_h)
             (100.0, 80.0, 800.0, 600.0),
             (1920.0, 1080.0, 640.0, 480.0),
-            (50.0, 200.0, 1024.0, 768.0), // tall world
-            (300.0, 10.0, 800.0, 600.0),  // wide world
+            (50.0, 200.0, 1024.0, 768.0),
+            (300.0, 10.0, 800.0, 600.0),
         ];
 
         for (ww, wh, cw, ch) in cases {
             let mut v = View2d::default();
             v.fit(ww, wh, cw, ch);
 
-            // Verify all 4 corners
             let corners = [(0.0, 0.0), (ww, 0.0), (0.0, wh), (ww, wh)];
             for (wx, wy) in corners {
                 let (cx, cy) = v.world_to_canvas(wx, wy, cw, ch);
@@ -258,7 +245,6 @@ mod tests {
         }
     }
 
-    /// zoom_factor calculation
     #[test]
     fn zoom_factor_calculation() {
         let v = View2d {
@@ -271,7 +257,6 @@ mod tests {
         assert!((v.zoom_factor(2.5) - 0.5).abs() < EPS);
     }
 
-    /// set clamps non-positive view_size to epsilon
     #[test]
     fn set_clamps_view_size() {
         let mut v = View2d::default();
@@ -285,12 +270,10 @@ mod tests {
         v.set(1.0, 2.0, f64::EPSILON * 0.5);
         assert_eq!(v.view_size, f64::EPSILON);
 
-        // Positive value passes through
         v.set(1.0, 2.0, 42.0);
         assert_eq!(v.view_size, 42.0);
     }
 
-    /// Default values
     #[test]
     fn default_values() {
         let v = View2d::default();

@@ -1,25 +1,12 @@
-//! Minimal P-256 ECDSA signing core.
-//!
-//! p256 crate への依存を排除し、neco-galois ベースの自前実装に置換。
+//! P-256 の ECDSA 事前ハッシュ署名と検証を提供します。
 
 use core::fmt;
 
 use neco_galois::generate_k;
 use neco_galois::{Fp, P256Field, P256Order, PrimeField, SQRT_EXP_P256, U256};
 
-// -----------------------------------------------------------------------
-// 型エイリアス
-// -----------------------------------------------------------------------
-
 type FpField = Fp<P256Field>;
 type Scalar = Fp<P256Order>;
-
-// -----------------------------------------------------------------------
-// P-256 曲線定数
-// a = -3 (mod p)
-// b = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b
-// G = (Gx, Gy)
-// -----------------------------------------------------------------------
 
 /// P-256 の係数 a = p - 3 (= -3 mod p)
 fn curve_a() -> FpField {
@@ -59,10 +46,6 @@ fn order_u256() -> U256 {
     P256Order::MODULUS
 }
 
-// -----------------------------------------------------------------------
-// 点の表現
-// -----------------------------------------------------------------------
-
 /// アフィン座標点
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct AffinePoint {
@@ -99,12 +82,7 @@ impl ProjectivePoint {
     }
 }
 
-// -----------------------------------------------------------------------
-// P-256 群演算
-// -----------------------------------------------------------------------
-
-/// 射影点の2倍算。P-256 の a=-3 最適化を使用。
-/// M = 3*(X - Z²)*(X + Z²) (Hankerson et al. Algorithm 3.21)
+/// `M = 3(X - Z²)(X + Z²)` を使う P-256 の射影点二倍算です。
 fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     if p.is_infinity {
         return ProjectivePoint::infinity();
@@ -114,26 +92,22 @@ fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     let y = p.y;
     let z = p.z;
 
-    // a=-3 最適化: M = 3*(X - Z²)*(X + Z²)
     let z2 = FpField::sqr(z);
     let xmz2 = FpField::sub(x, z2);
     let xpz2 = FpField::add(x, z2);
     let m_part = FpField::mul(xmz2, xpz2);
     let two_m = FpField::add(m_part, m_part);
-    let m = FpField::add(two_m, m_part); // M = 3*(X-Z²)*(X+Z²)
+    let m = FpField::add(two_m, m_part);
 
-    // S = 4*X*Y²
     let y2 = FpField::sqr(y);
     let xy = FpField::mul(x, y2);
     let two_xy = FpField::add(xy, xy);
     let s = FpField::add(two_xy, two_xy);
 
-    // X' = M² - 2*S
     let m2 = FpField::sqr(m);
     let two_s = FpField::add(s, s);
     let x_new = FpField::sub(m2, two_s);
 
-    // Y' = M*(S - X') - 8*Y⁴
     let s_minus_x = FpField::sub(s, x_new);
     let my = FpField::mul(m, s_minus_x);
     let y4 = FpField::sqr(y2);
@@ -144,7 +118,6 @@ fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     };
     let y_new = FpField::sub(my, eight_y4);
 
-    // Z' = 2*Y*Z
     let yz = FpField::mul(y, z);
     let z_new = FpField::add(yz, yz);
 
@@ -172,13 +145,11 @@ fn point_add(p: ProjectivePoint, q: ProjectivePoint) -> ProjectivePoint {
     let y2 = q.y;
     let z2 = q.z;
 
-    // U1 = X1*Z2², U2 = X2*Z1²
     let z1_sq = FpField::sqr(z1);
     let z2_sq = FpField::sqr(z2);
     let u1 = FpField::mul(x1, z2_sq);
     let u2 = FpField::mul(x2, z1_sq);
 
-    // S1 = Y1*Z2³, S2 = Y2*Z1³
     let s1 = FpField::mul(y1, FpField::mul(z2, z2_sq));
     let s2 = FpField::mul(y2, FpField::mul(z1, z1_sq));
 
@@ -197,17 +168,14 @@ fn point_add(p: ProjectivePoint, q: ProjectivePoint) -> ProjectivePoint {
     let h3 = FpField::mul(h, h2);
     let u1h2 = FpField::mul(u1, h2);
 
-    // X' = R² - H³ - 2*U1*H²
     let r2 = FpField::sqr(r);
     let two_u1h2 = FpField::add(u1h2, u1h2);
     let x3 = FpField::sub(FpField::sub(r2, h3), two_u1h2);
 
-    // Y' = R*(U1*H² - X') - S1*H³
     let u1h2_minus_x3 = FpField::sub(u1h2, x3);
     let s1h3 = FpField::mul(s1, h3);
     let y3 = FpField::sub(FpField::mul(r, u1h2_minus_x3), s1h3);
 
-    // Z' = H*Z1*Z2
     let z3 = FpField::mul(h, FpField::mul(z1, z2));
 
     ProjectivePoint {
@@ -263,10 +231,6 @@ fn is_on_curve(p: AffinePoint) -> bool {
     FpField::eq(y2, rhs)
 }
 
-// -----------------------------------------------------------------------
-// SEC1 エンコード/デコード
-// -----------------------------------------------------------------------
-
 /// アフィン点を SEC1 圧縮形式 (33バイト) にエンコード
 fn encode_sec1_compressed(p: AffinePoint) -> [u8; 33] {
     let x_bytes = p.x.to_u256().to_be_bytes();
@@ -278,7 +242,7 @@ fn encode_sec1_compressed(p: AffinePoint) -> [u8; 33] {
     out
 }
 
-/// SEC1 圧縮バイト列から AffinePoint に復元
+/// 33 バイトの SEC1 圧縮形式から点を復元します。接頭辞は y 座標の偶奇を指定します。入力長、接頭辞、x 座標の範囲、または曲線上の点への復元が無効な場合は失敗します。
 fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     if bytes.len() != 33 {
         return None;
@@ -290,9 +254,7 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     let x_bytes: [u8; 32] = bytes[1..].try_into().ok()?;
     let x_u256 = U256::from_be_bytes(x_bytes);
 
-    // x < p の範囲チェック
     if let core::cmp::Ordering::Less = U256::cmp(x_u256, P256Field::MODULUS) {
-        // ok
     } else {
         return None;
     }
@@ -301,7 +263,6 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     let a = curve_a();
     let b = curve_b();
 
-    // y² = x³ + ax + b
     let x3 = FpField::mul(FpField::sqr(x), x);
     let ax = FpField::mul(a, x);
     let rhs = FpField::add(FpField::add(x3, ax), b);
@@ -309,7 +270,6 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     let y = FpField::sqrt(rhs, SQRT_EXP_P256)?;
     let y_u256 = y.to_u256();
 
-    // prefix に合わせて y の奇偶を選択
     let y_odd = y_u256.l0 & 1 == 1;
     let want_odd = prefix == 0x03;
 
@@ -328,11 +288,7 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     Some(point)
 }
 
-// -----------------------------------------------------------------------
-// ECDSA 署名/検証
-// -----------------------------------------------------------------------
-
-/// s > n/2 なら n - s を返す (low-s 正規化)
+/// `s > n / 2` の署名成分を `n - s` に正規化します。
 fn normalize_s(s: U256, n: U256) -> U256 {
     let half_n = U256::shr1(n);
     if let core::cmp::Ordering::Greater = U256::cmp(s, half_n) {
@@ -343,7 +299,7 @@ fn normalize_s(s: U256, n: U256) -> U256 {
     }
 }
 
-/// RFC 6979 + ECDSA 署名 (prehash)
+/// RFC 6979 の決定論的乱数を使い、low-s ECDSA 署名を作ります。
 fn ecdsa_sign(secret_bytes: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
     let n = order_u256();
     let g = AffinePoint {
@@ -352,15 +308,10 @@ fn ecdsa_sign(secret_bytes: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
     };
 
     let d = U256::from_be_bytes(*secret_bytes);
-
-    // RFC 6979 で決定論的 k を生成
     let k = generate_k(secret_bytes, digest, &n);
-
-    // R = k * G
     let r_proj = scalar_mul(k, g);
     let r_affine = to_affine(r_proj)?;
 
-    // r = x_R mod n
     let rx = r_affine.x.to_u256();
     let r = if let core::cmp::Ordering::Less = U256::cmp(rx, n) {
         rx
@@ -372,7 +323,6 @@ fn ecdsa_sign(secret_bytes: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
         return None;
     }
 
-    // e = digest as integer (mod n)
     let e_raw = U256::from_be_bytes(*digest);
     let e = if let core::cmp::Ordering::Less = U256::cmp(e_raw, n) {
         e_raw
@@ -381,7 +331,6 @@ fn ecdsa_sign(secret_bytes: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
         v
     };
 
-    // s = k^-1 * (e + r*d) mod n
     let k_scalar = Scalar::from_u256(k);
     let k_inv = Scalar::inv(k_scalar);
     let r_scalar = Scalar::from_u256(r);
@@ -397,7 +346,6 @@ fn ecdsa_sign(secret_bytes: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
         return None;
     }
 
-    // low-s 正規化
     let s = normalize_s(s, n);
 
     let mut out = [0u8; 64];
@@ -417,7 +365,6 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
     let r = U256::from_be_bytes(sig_bytes[..32].try_into().unwrap());
     let s = U256::from_be_bytes(sig_bytes[32..].try_into().unwrap());
 
-    // r, s は [1, n-1] の範囲
     if U256::is_zero(r) || U256::is_zero(s) {
         return false;
     }
@@ -428,19 +375,16 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
         return false;
     }
 
-    // high-s 拒否
     let half_n = U256::shr1(n);
     if let core::cmp::Ordering::Greater = U256::cmp(s, half_n) {
         return false;
     }
 
-    // 公開鍵
     let pubkey = match decode_sec1_compressed(pubkey_sec1) {
         Some(p) => p,
         None => return false,
     };
 
-    // e = digest mod n
     let e_raw = U256::from_be_bytes(*digest);
     let e = if let core::cmp::Ordering::Less = U256::cmp(e_raw, n) {
         e_raw
@@ -449,18 +393,15 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
         v
     };
 
-    // w = s^-1 mod n
     let s_scalar = Scalar::from_u256(s);
     let w_scalar = Scalar::inv(s_scalar);
 
-    // u1 = e*w mod n, u2 = r*w mod n
     let e_scalar = Scalar::from_u256(e);
     let r_scalar = Scalar::from_u256(r);
 
     let u1 = Scalar::mul(e_scalar, w_scalar).to_u256();
     let u2 = Scalar::mul(r_scalar, w_scalar).to_u256();
 
-    // R = u1*G + u2*Q
     let u1g = scalar_mul(u1, g);
     let u2q = scalar_mul(u2, pubkey);
     let r_point = point_add(u1g, u2q);
@@ -470,7 +411,6 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
         None => return false,
     };
 
-    // r_x mod n == r
     let r_x = r_affine.x.to_u256();
     let r_x_mod_n = if let core::cmp::Ordering::Less = U256::cmp(r_x, n) {
         r_x
@@ -482,10 +422,7 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
     U256::cmp(r_x_mod_n, r) == core::cmp::Ordering::Equal
 }
 
-// -----------------------------------------------------------------------
-// エラー型
-// -----------------------------------------------------------------------
-
+/// P-256 の鍵と署名の生成・復元・検証で返すエラーです。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum P256Error {
     InvalidSecretKey,
@@ -506,10 +443,6 @@ impl fmt::Display for P256Error {
 }
 
 impl std::error::Error for P256Error {}
-
-// -----------------------------------------------------------------------
-// Hex ユーティリティ
-// -----------------------------------------------------------------------
 
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -545,10 +478,6 @@ fn hex_nibble(b: u8) -> Result<u8, P256Error> {
     }
 }
 
-// -----------------------------------------------------------------------
-// 秘密鍵バリデーション: 1 ≤ d < n
-// -----------------------------------------------------------------------
-
 fn validate_secret_key(bytes: &[u8; 32]) -> bool {
     let d = U256::from_be_bytes(*bytes);
     if U256::is_zero(d) {
@@ -557,16 +486,14 @@ fn validate_secret_key(bytes: &[u8; 32]) -> bool {
     matches!(U256::cmp(d, order_u256()), core::cmp::Ordering::Less)
 }
 
-// -----------------------------------------------------------------------
-// 公開 API
-// -----------------------------------------------------------------------
-
+/// P-256 の 32 バイト秘密鍵です。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SecretKey {
     bytes: [u8; 32],
 }
 
 impl SecretKey {
+    /// 暗号学的乱数から有効な秘密鍵を生成します。乱数を取得できない場合は失敗します。
     pub fn generate() -> Result<Self, P256Error> {
         let n = order_u256();
         loop {
@@ -581,6 +508,7 @@ impl SecretKey {
         }
     }
 
+    /// 64 桁の 16 進文字列から秘密鍵を作ります。零または曲線位数以上の値は失敗します。
     pub fn from_hex(hex: &str) -> Result<Self, P256Error> {
         let bytes = hex_decode(hex)?;
         if bytes.len() != 32 {
@@ -592,6 +520,7 @@ impl SecretKey {
         Self::from_bytes(arr)
     }
 
+    /// 32 バイトから秘密鍵を作ります。零または曲線位数以上の値は失敗します。
     pub fn from_bytes(bytes: [u8; 32]) -> Result<Self, P256Error> {
         if !validate_secret_key(&bytes) {
             return Err(P256Error::InvalidSecretKey);
@@ -619,12 +548,14 @@ impl SecretKey {
         Ok(PublicKey { sec1_bytes })
     }
 
+    /// 32 バイトの事前ハッシュに RFC 6979 の決定論的 nonce を用いる low-S ECDSA 署名を付与します。署名を作れない場合は失敗します。
     pub fn sign_ecdsa_prehash(&self, digest32: [u8; 32]) -> Result<EcdsaSignature, P256Error> {
         let sig_bytes = ecdsa_sign(&self.bytes, &digest32).ok_or(P256Error::InvalidSignature)?;
         Ok(EcdsaSignature { bytes: sig_bytes })
     }
 }
 
+/// 33 バイトの圧縮 SEC1 形式による P-256 公開鍵です。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublicKey {
     sec1_bytes: [u8; 33],
@@ -639,6 +570,7 @@ impl PublicKey {
         Self::from_sec1_bytes(&bytes)
     }
 
+    /// 33 バイトの圧縮 SEC1 値から公開鍵を作ります。入力長、接頭辞、x 座標の範囲、または曲線上の点への復元が無効な場合は失敗します。
     pub fn from_sec1_bytes(bytes: &[u8]) -> Result<Self, P256Error> {
         if bytes.len() != 33 {
             return Err(P256Error::InvalidPublicKey);
@@ -656,6 +588,7 @@ impl PublicKey {
         self.sec1_bytes
     }
 
+    /// 32 バイトの事前ハッシュと ECDSA 署名を検証します。範囲外の成分または high-S の署名を含む、検証できない署名は失敗します。
     pub fn verify_ecdsa_prehash(
         &self,
         digest32: [u8; 32],
@@ -699,10 +632,6 @@ impl EcdsaSignature {
     }
 }
 
-// -----------------------------------------------------------------------
-// ユニットテスト
-// -----------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -735,7 +664,6 @@ mod tests {
 
     #[test]
     fn public_key_derivation_k1() {
-        // k=1 → Q = G の x 座標が一致する
         let mut sk_bytes = [0u8; 32];
         sk_bytes[31] = 1;
         let sk = SecretKey::from_bytes(sk_bytes).unwrap();
@@ -786,7 +714,6 @@ mod tests {
         let digest = [0x77u8; 32];
         let sig = sk.sign_ecdsa_prehash(digest).unwrap();
 
-        // s の high-s 相当 = n - s を作成
         let mut bytes = sig.to_bytes();
         let s = U256::from_be_bytes(bytes[32..].try_into().unwrap());
         let n = order_u256();
@@ -795,7 +722,6 @@ mod tests {
 
         let high_s_sig = EcdsaSignature::from_bytes(bytes);
         let half_n = U256::shr1(n);
-        // high_s > half_n の場合のみ拒否
         if let core::cmp::Ordering::Greater = U256::cmp(high_s, half_n) {
             assert!(
                 pk.verify_ecdsa_prehash(digest, &high_s_sig).is_err(),
@@ -817,7 +743,6 @@ mod tests {
 
     #[test]
     fn deterministic_signatures() {
-        // 同じ秘密鍵 + ダイジェストで同じ署名 (RFC 6979)
         let sk_bytes =
             hex_to_bytes32("c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721");
         let sk = SecretKey::from_bytes(sk_bytes).unwrap();
@@ -829,7 +754,6 @@ mod tests {
 
     #[test]
     fn point_double_equals_point_add_self() {
-        // 2*G = G + G
         let g = AffinePoint {
             x: generator_x(),
             y: generator_y(),

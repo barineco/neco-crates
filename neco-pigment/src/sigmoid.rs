@@ -2,9 +2,7 @@ use crate::colorimetry::illuminant_d65;
 use crate::illuminant::{LAMBDAS, LAMBDA_MAX, LAMBDA_MIN, N_SPECTRAL};
 use crate::PigmentError;
 
-/// Jakob sigmoid coefficients (12 bytes per color).
-///
-/// Defined over normalized wavelength t = (lambda - 380) / 400 in [0, 1].
+/// `t = (λ - 380) / 400`、`t ∈ [0, 1]` とするシグモイドの係数です。
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SigmoidCoeffs {
@@ -13,27 +11,22 @@ pub struct SigmoidCoeffs {
     pub c2: f32,
 }
 
-/// Max Gauss-Newton iterations.
 const MAX_ITERATIONS: usize = 50;
-/// Convergence threshold (L2 norm of round-trip RGB residual).
 const CONVERGENCE_THRESHOLD: f64 = 1e-5;
-/// Accept threshold when stalled (gamut extremes cannot converge exactly).
 const STALL_ACCEPT_THRESHOLD: f64 = 2e-3;
-/// Stall detection: relative improvement below this ratio.
 const STALL_RATIO: f64 = 0.999;
 
-/// Normalize wavelength to [0, 1].
 fn normalize_lambda(lambda_nm: f64) -> f64 {
     (lambda_nm - LAMBDA_MIN as f64) / (LAMBDA_MAX as f64 - LAMBDA_MIN as f64)
 }
 
-/// Evaluate the Jakob sigmoid: S(t) = 1/2 + x / (2*sqrt(1 + x^2)).
+/// `S(t) = 1/2 + x / (2√(1 + x²))` を計算します。
 fn sigmoid_eval(c0: f64, c1: f64, c2: f64, t: f64) -> f64 {
     let x = c0 * t * t + c1 * t + c2;
     0.5 + x / (2.0 * (1.0 + x * x).sqrt())
 }
 
-/// Sigmoid value and partial derivatives w.r.t. coefficients.
+/// 値と各係数に関する偏微分を返します。
 fn sigmoid_deriv(c0: f64, c1: f64, c2: f64, t: f64) -> (f64, [f64; 3]) {
     let x = c0 * t * t + c1 * t + c2;
     let denom = (1.0 + x * x).sqrt();
@@ -43,7 +36,7 @@ fn sigmoid_deriv(c0: f64, c1: f64, c2: f64, t: f64) -> (f64, [f64; 3]) {
     (s, ds)
 }
 
-/// Convert sigmoid coefficients to a reflectance spectrum.
+/// シグモイド係数から反射率スペクトルを構成します。
 pub fn sigmoid_to_spectrum(coeffs: &SigmoidCoeffs) -> [f32; N_SPECTRAL] {
     let mut refl = [0.0f32; N_SPECTRAL];
     for (i, refl_i) in refl.iter_mut().enumerate().take(N_SPECTRAL) {
@@ -53,9 +46,8 @@ pub fn sigmoid_to_spectrum(coeffs: &SigmoidCoeffs) -> [f32; N_SPECTRAL] {
     refl
 }
 
-/// Fit Jakob sigmoid coefficients to an sRGB color via Gauss-Newton optimization.
+/// sRGB から Gauss-Newton 法で Jakob シグモイドの係数を求めます。
 pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentError> {
-    // Target in linear RGB
     let target = [
         neco_color::srgb_to_linear(r) as f64,
         neco_color::srgb_to_linear(g) as f64,
@@ -64,16 +56,14 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
 
     let transform = illuminant_d65();
 
-    // Initial guess: flat spectrum (R=0.5)
     let mut c = [0.0f64; 3];
     let mut best_c = c;
     let mut best_residual = f64::MAX;
     let mut prev_residual = f64::MAX;
 
     for _iter in 0..MAX_ITERATIONS {
-        // Compute predicted RGB and Jacobian
         let mut rgb_pred = [0.0f64; 3];
-        let mut jacobian = [[0.0f64; 3]; 3]; // J[rgb_ch][coeff_idx]
+        let mut jacobian = [[0.0f64; 3]; 3];
 
         for (i, &lambda_nm) in LAMBDAS.iter().enumerate().take(N_SPECTRAL) {
             let t = normalize_lambda(lambda_nm as f64);
@@ -103,7 +93,6 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
             best_c = c;
         }
 
-        // Exact convergence
         if residual_norm < CONVERGENCE_THRESHOLD {
             return Ok(SigmoidCoeffs {
                 c0: c[0] as f32,
@@ -112,7 +101,6 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
             });
         }
 
-        // Stall detection: sigmoid's (0,1) range causes stalling at gamut extremes
         if residual_norm > prev_residual * STALL_RATIO && best_residual < STALL_ACCEPT_THRESHOLD {
             return Ok(SigmoidCoeffs {
                 c0: best_c[0] as f32,
@@ -122,7 +110,6 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
         }
         prev_residual = residual_norm;
 
-        // Gauss-Newton: J^T J Δc = -J^T r
         let jt_j = jtj(&jacobian);
         let jt_r = jtr(&jacobian, &residual);
 
@@ -135,7 +122,6 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
         }
     }
 
-    // Accept best result if good enough after loop exit
     if best_residual < STALL_ACCEPT_THRESHOLD {
         return Ok(SigmoidCoeffs {
             c0: best_c[0] as f32,
@@ -149,7 +135,7 @@ pub fn rgb_to_sigmoid(r: f32, g: f32, b: f32) -> Result<SigmoidCoeffs, PigmentEr
     })
 }
 
-/// Compute J^T J.
+/// ヤコビ行列の転置とヤコビ行列の積を求めます。
 fn jtj(j: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let mut m = [[0.0f64; 3]; 3];
     for i in 0..3 {
@@ -162,7 +148,7 @@ fn jtj(j: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     m
 }
 
-/// Compute -J^T r.
+/// ヤコビ行列の転置と残差の積に負号を付けた値を求めます。
 fn jtr(j: &[[f64; 3]; 3], r: &[f64; 3]) -> [f64; 3] {
     let mut v = [0.0f64; 3];
     for i in 0..3 {
@@ -173,7 +159,7 @@ fn jtr(j: &[[f64; 3]; 3], r: &[f64; 3]) -> [f64; 3] {
     v
 }
 
-/// Solve a 3x3 linear system using Cramer's rule.
+/// クラメルの公式で 3×3 の連立一次方程式を解きます。
 fn solve_3x3(a: &[[f64; 3]; 3], b: &[f64; 3]) -> Option<[f64; 3]> {
     let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
         - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
@@ -203,9 +189,8 @@ fn solve_3x3(a: &[[f64; 3]; 3], b: &[f64; 3]) -> Option<[f64; 3]> {
     Some([x0, x1, x2])
 }
 
-// Accessor helper for RgbTransform
 impl crate::colorimetry::RgbTransform {
-    /// Access a_rgb element as f64.
+    /// a_rgb の要素を f64 として取得します。
     pub(crate) fn a_rgb_f64(&self, channel: usize, wavelength_idx: usize) -> f64 {
         self.a_rgb[channel * N_SPECTRAL + wavelength_idx] as f64
     }
@@ -236,7 +221,6 @@ mod tests {
             c2: 0.0,
         };
         let refl = sigmoid_to_spectrum(&coeffs);
-        // c0=c1=c2=0 -> S(lambda) = 0.5 for all wavelengths
         for &value in refl.iter().take(N_SPECTRAL) {
             assert!((value - 0.5).abs() < 1e-6);
         }
@@ -250,14 +234,13 @@ mod tests {
 
     #[test]
     fn gn_convergence_primaries() {
-        // Verify convergence for 6 primary/secondary colors
         let colors = [
-            (1.0, 0.0, 0.0), // Red
-            (0.0, 1.0, 0.0), // Green
-            (0.0, 0.0, 1.0), // Blue
-            (1.0, 1.0, 0.0), // Yellow
-            (1.0, 0.0, 1.0), // Magenta
-            (0.0, 1.0, 1.0), // Cyan
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (1.0, 1.0, 0.0),
+            (1.0, 0.0, 1.0),
+            (0.0, 1.0, 1.0),
         ];
         for (r, g, b) in colors {
             rgb_to_sigmoid(r, g, b).unwrap_or_else(|e| panic!("GN failed for ({r},{g},{b}): {e}"));

@@ -1,11 +1,11 @@
-//! Segment selection and loop construction
+//! Boolean 演算で選択した線分から閉ループを構成する処理。
 
 use super::classify::{Location, OverlapClass};
 use super::dist2;
 use crate::types::BooleanOp;
 use neco_nurbs::NurbsCurve2D;
 
-/// Select segments according to the boolean operation type.
+/// 演算種別と位置分類に従って結果境界の線分を選択します。減算では B の内側線分を逆向きにします。
 pub fn select_segments(
     op: BooleanOp,
     segs_a: &[NurbsCurve2D],
@@ -67,9 +67,7 @@ pub fn select_segments(
     selected
 }
 
-/// Build closed loops from selected segments via endpoint matching.
-///
-/// Gaps between endpoints are bridged with degree=1 linear segments.
+/// 未使用の線分から近い端点を順に連結し、隙間には一次線分を追加して閉ループを構成します。次の線分までの距離が `tol * 100` を超える場合は、その線分を残したまま現在の鎖を閉じるため、孤立した線分を含まない別のループを返すことがあります。線分が空、またはループを一つも作れない場合は失敗します。
 pub fn build_loops(
     segments: Vec<NurbsCurve2D>,
     tol: f64,
@@ -85,18 +83,15 @@ pub fn build_loops(
         used[start_idx] = true;
         let mut chain: Vec<NurbsCurve2D> = vec![segments[start_idx].clone()];
 
-        // Connect via endpoint matching until closed
         let max_iter = segments.len();
         for _ in 0..max_iter {
             let chain_end = curve_end(chain.last().expect("chain is non-empty"));
             let chain_start = curve_start(&chain[0]);
 
-            // Check if loop is closed
             if chain.len() > 1 && dist2(chain_end, chain_start) < tol {
                 break;
             }
 
-            // Find the unused segment whose start/end is closest to chain_end
             let mut best_idx = None;
             let mut best_dist = f64::INFINITY;
             let mut best_reversed = false;
@@ -125,7 +120,6 @@ pub fn build_loops(
 
             if let Some(idx) = best_idx {
                 if best_dist > tol * 100.0 {
-                    // Nearest segment too far away -> end loop
                     break;
                 }
                 used[idx] = true;
@@ -136,7 +130,6 @@ pub fn build_loops(
                     segments[idx].clone()
                 };
 
-                // Insert linear bridging segment if gap exists
                 let gap = dist2(chain_end, curve_start(&next_curve));
                 if gap > tol {
                     chain.push(make_linear_segment(chain_end, curve_start(&next_curve)));
@@ -149,7 +142,6 @@ pub fn build_loops(
         }
 
         if chain.len() < 2 {
-            // A single segment is valid if it forms a closed curve
             let start = curve_start(&chain[0]);
             let end = curve_end(&chain[0]);
             if dist2(start, end) >= tol {
@@ -157,7 +149,6 @@ pub fn build_loops(
             }
         }
 
-        // Bridge gap between last and first endpoints
         let chain_end = curve_end(chain.last().expect("chain is non-empty"));
         let chain_start = curve_start(&chain[0]);
         if dist2(chain_end, chain_start) > tol {
@@ -174,20 +165,17 @@ pub fn build_loops(
     Ok(loops)
 }
 
-/// Evaluate point at curve start parameter.
 fn curve_start(c: &NurbsCurve2D) -> [f64; 2] {
     let t = c.knots[c.degree];
     c.evaluate(t)
 }
 
-/// Evaluate point at curve end parameter.
 fn curve_end(c: &NurbsCurve2D) -> [f64; 2] {
     let n = c.control_points.len();
     let t = c.knots[n];
     c.evaluate(t)
 }
 
-/// Create a degree=1 linear segment between two points.
 fn make_linear_segment(start: [f64; 2], end: [f64; 2]) -> NurbsCurve2D {
     NurbsCurve2D::new(1, vec![start, end], vec![0.0, 0.0, 1.0, 1.0])
 }

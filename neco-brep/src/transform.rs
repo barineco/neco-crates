@@ -7,8 +7,6 @@ use neco_nurbs::NurbsRegion;
 use crate::brep::{Curve3D, Edge, EdgeId, EdgeRef, Face, Shell, Surface};
 use crate::vec3;
 
-// ── Helpers ──────────────────────────────────────────
-
 /// Transform a point by a 4x4 affine matrix.
 fn transform_point(m: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
     [
@@ -209,11 +207,7 @@ fn transform_surface(m: &[[f64; 4]; 4], surface: &Surface) -> Surface {
     }
 }
 
-// ── Public API ───────────────────────────────────────
-
-/// Apply a 4x4 affine transform to all vertices, edges, and faces.
-///
-/// Returns a clone if the matrix is the identity.
+/// アフィン行列を Shell の頂点、辺、面へ適用した Shell を返します。単位行列には入力の複製を返します。非一様拡大縮小では曲線・曲面の半径と角度を補正しません。
 pub fn apply_transform(shell: &Shell, matrix: &[[f64; 4]; 4]) -> Shell {
     if is_identity(matrix) {
         return shell.clone();
@@ -266,15 +260,12 @@ pub fn solid_to_shell(
     let mut shell = Shell::new();
     let mut warnings: Vec<String> = Vec::new();
 
-    // 1. Add vertices
     for v in vertices {
         shell.add_vertex(*v);
     }
 
-    // 2. Edge map: (min_idx, max_idx) -> EdgeId (dedup)
     let mut edge_map: HashMap<(usize, usize), EdgeId> = HashMap::new();
 
-    // 3. Process each face
     for face_indices in faces {
         if face_indices.len() < 3 {
             return Err(format!(
@@ -302,19 +293,16 @@ pub fn solid_to_shell(
                 )
             });
 
-            // forward = true when face traversal matches edge's v_start -> v_end
             let forward = a < b;
             loop_edges.push(EdgeRef { edge_id, forward });
         }
 
-        // Normal: cross(v1 - v0, v2 - v0)
         let v0 = vertices[face_indices[0]];
         let v1 = vertices[face_indices[1]];
         let v2 = vertices[face_indices[2]];
         let raw_normal = vec3::cross(vec3::sub(v1, v0), vec3::sub(v2, v0));
         let normal = vec3::normalized(raw_normal);
 
-        // Non-coplanarity check for 4+ vertex faces
         if face_indices.len() > 3 {
             let normal_len = vec3::length(raw_normal);
             if normal_len > 1e-15 {
@@ -330,7 +318,6 @@ pub fn solid_to_shell(
             }
         }
 
-        // Use face centroid as origin
         let n = face_indices.len() as f64;
         let sum = face_indices
             .iter()
@@ -346,8 +333,6 @@ pub fn solid_to_shell(
 
     Ok((shell, warnings))
 }
-
-// ── Profile conversion helpers (shared by extrude / revolve) ──
 
 /// Extract profile vertices from a degree-1 NurbsRegion.
 ///
@@ -366,7 +351,6 @@ pub fn profile_vertices(profile: &NurbsRegion) -> Result<(Vec<[f64; 2]>, bool), 
         if pts.len() < 4 {
             return Err("closed profile has too few vertices".to_string());
         }
-        // Strip closing point (first == last)
         Ok((pts[..pts.len() - 1].to_vec(), true))
     } else {
         if pts.len() < 2 {
@@ -399,16 +383,14 @@ pub fn elevate_bezier_2d(
             .collect();
     }
 
-    // Convert to homogeneous coordinates: (w*x, w*y, w)
     let mut hom: Vec<[f64; 3]> = cps
         .iter()
         .zip(weights.iter())
         .map(|(c, &w)| [c[0] * w, c[1] * w, w])
         .collect();
 
-    // Elevate one degree at a time
     for deg in from_deg..to_deg {
-        let n = deg + 1; // current control point count
+        let n = deg + 1;
         let mut new_hom = vec![[0.0; 3]; n + 1];
         new_hom[0] = hom[0];
         new_hom[n] = hom[n - 1];
@@ -421,7 +403,6 @@ pub fn elevate_bezier_2d(
         hom = new_hom;
     }
 
-    // Convert back from homogeneous
     hom.iter()
         .map(|h| {
             let w = h[2];

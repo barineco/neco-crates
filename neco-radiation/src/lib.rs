@@ -1,4 +1,4 @@
-//! Acoustic radiation power estimators for vibrating surfaces.
+//! 振動面の音響放射パワーを推定します。
 
 #[derive(Debug, Clone)]
 pub struct RadiationCalculator {
@@ -18,10 +18,7 @@ impl RadiationCalculator {
         Self { rho_air, c_air }
     }
 
-    /// Compute radiated power from active sample points and their velocities.
-    ///
-    /// `points` and `values` must have identical length and corresponding order.
-    /// `cell_area` is the area associated with each active sample.
+    /// 各標本の面積と速度から放射パワーをワットで返します。座標はメートル、`cell_area` は平方メートル、周波数はヘルツ、速度はメートル毎秒です。離散二重和では対角項を一回、異なる標本の組を二回加えます。点と速度の標本数が一致しない場合は panic します。
     pub fn radiated_power(
         &self,
         points: &[[f64; 2]],
@@ -84,7 +81,7 @@ struct ModeData {
     r_factor: f64,
 }
 
-/// Modal radiation estimator for simply-supported rectangular plates.
+/// 単純支持された長方形板のモード別放射パワーを推定します。
 #[derive(Debug, Clone)]
 pub struct ModalRadiationCalculator {
     modes: Vec<ModeData>,

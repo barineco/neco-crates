@@ -2,4 +2,8 @@ mod graph_partition;
 mod spectral;
 
 pub use graph_partition::{count_cut_edges, kl_refine, recursive_partition, spectral_bisect};
-pub use spectral::{spectral_cluster, SpectralError, SpectralResult};
+pub use spectral::{
+    spectral_cluster, spectral_cluster_exact, ExactSpectralRequest, SpectralError,
+    SpectralInputIdentity, SpectralInputRevision, SpectralProjectionPurpose,
+    SpectralProjectionReference, SpectralResult,
+};

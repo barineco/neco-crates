@@ -1,5 +1,4 @@
-//! Quality tetrahedral meshing pipeline built from Delaunay insertion,
-//! boundary recovery, refinement, and improvement.
+//! 閉じた三角形表面から品質を調整した四面体メッシュを生成します。
 
 pub mod improvement;
 pub mod insertion;
@@ -12,10 +11,7 @@ pub mod tet_mesh;
 use crate::point3::Point3;
 use crate::types::TetMesh3D;
 
-/// Generate a quality tetrahedral mesh from a closed triangle surface mesh.
-///
-/// Pipeline: Delaunay tetrahedralization, boundary recovery, refinement,
-/// and quality improvement.
+/// 閉じた三角形表面から四面体メッシュを生成します。頂点または三角形が空、あるいは制約辺を回復できない場合はエラーを返します。
 pub fn generate_quality_mesh(
     surface_nodes: &[[f64; 3]],
     surface_triangles: &[[usize; 3]],
@@ -28,10 +24,8 @@ pub fn generate_quality_mesh(
 
     let mut plc = plc::PLC::from_surface_mesh(&surface_nodes, surface_triangles);
 
-    // 2. Delaunay tetrahedralization
     let mut mesh = insertion::build_delaunay(&surface_nodes)?;
 
-    // 3. Boundary recovery
     let edge_stats = recovery::recover_edges(&mut mesh, &plc, 3);
     if edge_stats.failed_edges > 0 {
         return Err(format!(
@@ -41,11 +35,9 @@ pub fn generate_quality_mesh(
     }
     let _face_stats = recovery::recover_faces(&mesh, &plc);
 
-    // 4. Refinement
     let refine_params = params.unwrap_or_default();
     let _refine_stats = refinement::refine_mesh(&mut mesh, &mut plc, &refine_params);
 
-    // 5. Improvement
     let improve_params = improvement::ImprovementParams::default();
     let _improve_stats = improvement::improve_mesh(&mut mesh, &improve_params);
 
@@ -73,22 +65,16 @@ mod tests {
             [0.0, 1.0, 1.0],
         ];
         let triangles = vec![
-            // bottom (z=0)
             [0, 2, 1],
             [0, 3, 2],
-            // top (z=1)
             [4, 5, 6],
             [4, 6, 7],
-            // front (y=0)
             [0, 1, 5],
             [0, 5, 4],
-            // back (y=1)
             [2, 3, 7],
             [2, 7, 6],
-            // left (x=0)
             [0, 4, 7],
             [0, 7, 3],
-            // right (x=1)
             [1, 2, 6],
             [1, 6, 5],
         ];

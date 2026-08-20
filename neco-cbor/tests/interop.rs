@@ -1,12 +1,10 @@
-//! ATProto data-model interop tests (DAG-CBOR round-trip + CID verification).
+//! ATProto データモデルと DAG-CBOR の相互運用を検査します。
 
 use neco_cbor::{decode_dag, encode_dag, CborValue};
 use neco_cid::{Base, Cid, Codec};
 use neco_json::{parse, JsonValue};
 
 const FIXTURES: &str = include_str!("atproto-interop/data-model-fixtures.json");
-
-// --- base64 decoder (standard, no padding required) ---
 
 fn decode_base64(input: &str) -> Vec<u8> {
     const TABLE: [u8; 128] = {
@@ -57,20 +55,15 @@ fn json_str<'a>(value: &'a JsonValue, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("expected string for key: {key}"))
 }
 
-// --- fixture-level assertions ---
-
-/// 各 fixture の JSON 値と DAG-CBOR デコード結果を再帰的に比較し、
-/// `$link` → Tag(42, ...) および `$bytes` → Bytes(...) の対応を検証する。
+/// JSON の `$link` と `$bytes` を CID リンクとバイト列へ対応付けて再帰比較します。
 fn assert_json_cbor_structure(json: &JsonValue, cbor: &CborValue) {
     match json {
         JsonValue::Object(fields) => {
-            // `{"$link": "..."}` は DAG-CBOR では Tag(42, Bytes(...))
             if let Some(link_val) = json.get("$link") {
                 let link_str = link_val.as_str().expect("$link must be string");
                 let (tag, inner) = cbor.as_tag().expect("$link must map to Tag");
                 assert_eq!(tag, 42, "$link must be tag 42");
                 let cid_bytes = inner.as_bytes().expect("tag 42 inner must be bytes");
-                // CID bytes の先頭は 0x00 prefix、残りが CID binary
                 assert_eq!(cid_bytes[0], 0x00, "CID link must start with 0x00");
                 let cid = Cid::from_bytes(&cid_bytes[1..])
                     .expect("CID parse failed")
@@ -82,7 +75,6 @@ fn assert_json_cbor_structure(json: &JsonValue, cbor: &CborValue) {
                 );
                 return;
             }
-            // `{"$bytes": "..."}` は DAG-CBOR では Bytes(...)
             if let Some(bytes_val) = json.get("$bytes") {
                 let _b64 = bytes_val.as_str().expect("$bytes must be string");
                 let decoded_bytes = decode_base64(_b64);
@@ -94,7 +86,6 @@ fn assert_json_cbor_structure(json: &JsonValue, cbor: &CborValue) {
                 );
                 return;
             }
-            // 通常のオブジェクト
             let cbor_map = cbor.as_map().expect("expected CBOR map");
             assert_eq!(fields.len(), cbor_map.len(), "map length mismatch");
             for (key, json_val) in fields {
@@ -116,7 +107,6 @@ fn assert_json_cbor_structure(json: &JsonValue, cbor: &CborValue) {
             assert_eq!(cbor_text, s.as_str(), "text mismatch");
         }
         JsonValue::Number(n) => {
-            // fixture の数値はすべて非負整数
             let v = *n as u64;
             let cbor_u = cbor.as_unsigned().expect("expected CBOR unsigned");
             assert_eq!(cbor_u, v, "integer mismatch");
@@ -142,12 +132,10 @@ fn atproto_data_model_roundtrip_and_cid() {
         let expected_cid = json_str(fixture, "cid");
         let json_val = json_get(fixture, "json");
 
-        // 1. base64 → bytes → decode_dag
         let cbor_bytes = decode_base64(cbor_b64);
         let decoded = decode_dag(&cbor_bytes)
             .unwrap_or_else(|e| panic!("fixture {i}: decode_dag failed: {e}"));
 
-        // 2. encode_dag round-trip
         let re_encoded =
             encode_dag(&decoded).unwrap_or_else(|e| panic!("fixture {i}: encode_dag failed: {e}"));
         assert_eq!(
@@ -155,7 +143,6 @@ fn atproto_data_model_roundtrip_and_cid() {
             "fixture {i}: DAG-CBOR round-trip mismatch"
         );
 
-        // 3. CID 検証
         let cid = Cid::compute(Codec::DagCbor, &cbor_bytes);
         assert_eq!(
             cid.to_multibase(Base::Base32Lower),
@@ -163,7 +150,6 @@ fn atproto_data_model_roundtrip_and_cid() {
             "fixture {i}: CID mismatch"
         );
 
-        // 4. JSON 構造と CBOR 構造の対応検証 ($link, $bytes)
         assert_json_cbor_structure(json_val, &decoded);
     }
 }

@@ -1,11 +1,7 @@
-//! De Boor algorithm implementations shared by 2D/3D curves and surfaces.
+//! 2 次元・3 次元の曲線と曲面で共有する de Boor 評価を実装します。
 
 pub(crate) const MAX_DEGREE: usize = 10;
 
-/// Binary search for the knot span index.
-///
-/// Returns the largest `k` in `[degree, n-1]` such that `knots[k] <= t < knots[k+1]`.
-/// Returns `n - 1` when `t >= knots[n]`.
 pub(crate) fn find_knot_span(knots: &[f64], degree: usize, n: usize, t: f64) -> usize {
     if t >= knots[n] {
         return n - 1;
@@ -23,7 +19,6 @@ pub(crate) fn find_knot_span(knots: &[f64], degree: usize, n: usize, t: f64) -> 
     lo - 1
 }
 
-/// Search for the knot span index using a previous span as a hint.
 pub(crate) fn find_knot_span_hint(
     knots: &[f64],
     degree: usize,
@@ -66,14 +61,13 @@ fn clamp_parameter(knots: &[f64], degree: usize, n: usize, t: f64) -> f64 {
     t.clamp(knots[degree], knots[n])
 }
 
+/// SIMD 実装では、有効な固定長配列由来のアドレスに非アラインアクセス可能な組込み関数だけを用います。
 #[inline]
 fn blend_interleaved(dst: &mut [f64; 4], prev: [f64; 4], alpha: f64) {
     #[cfg(target_arch = "x86_64")]
     unsafe {
         use std::arch::x86_64::*;
 
-        // Safety: all pointers are derived from valid `[f64; 4]` arrays and
-        // `_mm_loadu_pd` / `_mm_storeu_pd` permit unaligned access.
         let one_minus = _mm_set1_pd(1.0 - alpha);
         let alpha_v = _mm_set1_pd(alpha);
 
@@ -92,8 +86,6 @@ fn blend_interleaved(dst: &mut [f64; 4], prev: [f64; 4], alpha: f64) {
     unsafe {
         use std::arch::aarch64::*;
 
-        // Safety: all pointers are derived from valid `[f64; 4]` arrays and
-        // NEON load/store intrinsics accept these contiguous addresses.
         let one_minus = vdupq_n_f64(1.0 - alpha);
         let alpha_v = vdupq_n_f64(alpha);
 
@@ -153,7 +145,6 @@ fn deboor_interleaved(
     buf[degree]
 }
 
-/// 1D De Boor in homogeneous 3D coordinates (hx, hy, hz, hw).
 pub(crate) fn deboor_1d_homogeneous_3d(
     degree: usize,
     knots: &[f64],
@@ -173,7 +164,6 @@ pub(crate) fn deboor_1d_homogeneous_3d(
     (out[0], out[1], out[2], out[3])
 }
 
-/// 1D De Boor in homogeneous 2D coordinates (hx, hy, hw).
 #[allow(dead_code)]
 pub(crate) fn deboor_1d_homogeneous_2d(
     degree: usize,
@@ -191,7 +181,6 @@ pub(crate) fn deboor_1d_homogeneous_2d(
     (out[0], out[1], out[2])
 }
 
-/// Evaluate a rational 2D curve directly from control points and weights.
 pub(crate) fn deboor_1d_control_points_2d(
     degree: usize,
     knots: &[f64],
@@ -217,7 +206,6 @@ pub(crate) fn deboor_1d_control_points_2d(
     (out[0], out[1], out[2], span)
 }
 
-/// Evaluate a rational 3D curve directly from control points and weights.
 pub(crate) fn deboor_1d_control_points_3d(
     degree: usize,
     knots: &[f64],
@@ -243,9 +231,6 @@ pub(crate) fn deboor_1d_control_points_3d(
     (out[0], out[1], out[2], out[3], span)
 }
 
-/// 1D Boehm knot insertion in homogeneous 3D coordinates.
-///
-/// Inserts parameter `t` at span `k`, increasing the control point count by one.
 pub(crate) fn knot_insert_1d_3d(
     degree: usize,
     knots: &[f64],

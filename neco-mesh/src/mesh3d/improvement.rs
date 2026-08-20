@@ -1,3 +1,6 @@
+#![doc = "最大二面角が閾値を超える四面体を反転、平滑化、縮約、外接球中心の挿入で改善します。"]
+#![doc = "境界頂点と正の符号付き体積を保ちます。反転と品質平滑化は品質が改善した変更だけを採用し、通常の平滑化は四面体を反転させる移動だけを戻します。"]
+
 use std::collections::HashSet;
 
 use crate::point3::Point3;
@@ -7,9 +10,8 @@ use super::quality::{circumcenter, max_dihedral_angle, min_dihedral_angle};
 use super::recovery::{flip_2_3, flip_3_2, flipnm};
 use super::tet_mesh::TetMesh;
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
+/// 四面体メッシュの品質改善で用いる条件です。
+/// `max_dihedral_threshold` はラジアンで指定します。`max_insertions_per_round` が 0 のときは品質不良の四面体数から挿入数を求めます。
 #[derive(Debug, Clone)]
 pub struct ImprovementParams {
     pub max_dihedral_threshold: f64,
@@ -48,9 +50,6 @@ pub struct ImprovementStats {
     pub edges_collapsed: usize,
 }
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
 pub fn detect_boundary_nodes(mesh: &TetMesh) -> HashSet<usize> {
     let mut boundary = HashSet::new();
     for (ti, nb) in mesh.neighbors.iter().enumerate() {
@@ -70,10 +69,6 @@ pub fn detect_boundary_nodes(mesh: &TetMesh) -> HashSet<usize> {
     }
     boundary
 }
-
-// ---------------------------------------------------------------------------
-// Laplacian smoothing
-// ---------------------------------------------------------------------------
 
 fn signed_volume(nodes: &[Point3], tet: &[usize; 4]) -> f64 {
     let a = &nodes[tet[0]];
@@ -156,9 +151,6 @@ pub fn smooth_vertices(
 
     total_smoothed
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 pub fn quality_smooth_vertices(
     mesh: &mut TetMesh,
@@ -278,11 +270,6 @@ fn compute_avg_edge_length(mesh: &TetMesh) -> f64 {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Edge collapse
-// ---------------------------------------------------------------------------
-
-/// `vertices(link(a)) ∩ vertices(link(b)) == edge_link(a, b)`
 fn link_condition(mesh: &TetMesh, a: usize, b: usize) -> bool {
     let link_vertices = |v: usize| -> HashSet<usize> {
         let star = mesh.star(v);
@@ -477,10 +464,6 @@ fn collapse_bad_edges(
     collapsed
 }
 
-// ---------------------------------------------------------------------------
-// Circumcenter insertion
-// ---------------------------------------------------------------------------
-
 fn try_insert_circumcenter(mesh: &mut TetMesh, tet_idx: usize) -> bool {
     if mesh.is_tombstone(tet_idx) {
         return false;
@@ -588,9 +571,6 @@ fn insert_circumcenters(
 
     inserted
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 fn count_bad_tets(mesh: &TetMesh, threshold: f64) -> usize {
     mesh.tets
@@ -774,7 +754,6 @@ pub fn improve_mesh(mesh: &mut TetMesh, params: &ImprovementParams) -> Improveme
             }
         }
 
-        // 3. Laplacian smoothing
         let smoothed = smooth_vertices(mesh, &boundary_nodes, params.smoothing_iterations);
         stats.vertices_smoothed += smoothed;
 
@@ -796,7 +775,6 @@ pub fn improve_mesh(mesh: &mut TetMesh, params: &ImprovementParams) -> Improveme
         if flip_smooth_stagnated && current_bad > 0 {
             let mut vertex_ops_improved = false;
 
-            // 5a. edge collapse
             if params.enable_edge_collapse {
                 let collapsed =
                     collapse_bad_edges(mesh, params.max_dihedral_threshold, &boundary_nodes);
@@ -808,7 +786,6 @@ pub fn improve_mesh(mesh: &mut TetMesh, params: &ImprovementParams) -> Improveme
 
             let boundary_nodes_updated = detect_boundary_nodes(mesh);
 
-            // 5c. circumcenter insertion
             if params.enable_vertex_insertion {
                 let bad_count = count_bad_tets(mesh, params.max_dihedral_threshold);
                 let max_ins = if params.max_insertions_per_round > 0 {
@@ -849,9 +826,6 @@ pub fn improve_mesh(mesh: &mut TetMesh, params: &ImprovementParams) -> Improveme
 
     stats
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -997,9 +971,6 @@ mod tests {
         assert_eq!(params.max_insertions_per_round, 0);
     }
 
-    // -----------------------------------------------------------------------
-    // -----------------------------------------------------------------------
-
     #[test]
     fn test_link_condition_valid() {
         let mut points = box_points();
@@ -1066,9 +1037,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // -----------------------------------------------------------------------
-
     #[test]
     fn test_circumcenter_insertion_mesh_integrity() {
         let mut points = box_points();
@@ -1126,9 +1094,6 @@ mod tests {
             "a vertex was inserted even though there were no bad tetrahedra"
         );
     }
-
-    // -----------------------------------------------------------------------
-    // -----------------------------------------------------------------------
 
     #[test]
     fn test_vertex_ops_enabled_vs_disabled() {

@@ -1,4 +1,4 @@
-//! Kubelka-Munk spectral pigment mixing crate.
+//! Kubelka-Munk の反射率スペクトルを用いて顔料を混合します。
 
 mod colorimetry;
 mod illuminant;
@@ -13,18 +13,17 @@ pub use illuminant::{LAMBDAS, LAMBDA_MAX, LAMBDA_MIN, LAMBDA_STEP, N_SPECTRAL};
 pub use km::{ks_mix, ks_mix_weighted, ks_to_reflectance, reflectance_to_ks, KsSpectrum};
 pub use sigmoid::{rgb_to_sigmoid, sigmoid_to_spectrum, SigmoidCoeffs};
 
-// Re-export neco-color gamma functions.
 pub use neco_color::{
     linear_to_srgb, linear_to_srgb_lut, srgb_to_linear, srgb_to_linear_lut, to_u8,
 };
 
-/// Error type for neco-pigment.
+/// 色素計算の失敗です。
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PigmentError {
-    /// Gauss-Newton optimization did not converge.
+    /// Gauss-Newton 法が収束しませんでした。
     ConvergenceFailure {
-        /// Final residual L2 norm.
+        /// 収束失敗時の最終残差の L2 ノルムです。
         residual: f64,
     },
 }
@@ -47,7 +46,7 @@ impl std::error::Error for PigmentError {}
 const BLACK_THRESHOLD: f32 = 1e-6;
 const WHITE_THRESHOLD: f32 = 1.0 - 1e-6;
 
-/// Bundled pigment holding the original sRGB, sigmoid coefficients, and K/S spectrum.
+/// 元の sRGB、シグモイド係数、K/S スペクトルを保持する顔料です。
 #[derive(Clone, Debug)]
 pub struct Pigment {
     pub srgb: [f32; 3],
@@ -56,7 +55,7 @@ pub struct Pigment {
 }
 
 impl Pigment {
-    /// Create a pigment from sRGB components.
+    /// sRGB の成分から顔料を作成します。黒と白は解析的に処理します。
     pub fn from_srgb(r: f32, g: f32, b: f32) -> Result<Pigment, PigmentError> {
         let max_ch = r.max(g).max(b);
         let min_ch = r.min(g).min(b);
@@ -98,13 +97,13 @@ impl Pigment {
         })
     }
 
-    /// Reconstruct the reflectance spectrum from sigmoid coefficients.
+    /// シグモイド係数から反射率スペクトルを構成します。
     pub fn spectrum(&self) -> [f32; N_SPECTRAL] {
         sigmoid_to_spectrum(&self.coeffs)
     }
 }
 
-/// Convert sRGB to K/S spectrum (handles black/white analytically).
+/// sRGB を K/S スペクトルへ変換します。黒と白は解析的に処理します。
 pub fn rgb_to_ks(r: f32, g: f32, b: f32) -> Result<KsSpectrum, PigmentError> {
     let max_ch = r.max(g).max(b);
     let min_ch = r.min(g).min(b);
@@ -125,7 +124,7 @@ pub fn rgb_to_ks(r: f32, g: f32, b: f32) -> Result<KsSpectrum, PigmentError> {
     Ok(reflectance_to_ks(&refl))
 }
 
-/// Convert K/S spectrum to sRGB (using LUT gamma).
+/// K/S スペクトルを sRGB へ変換します。ガンマ変換には LUT を使います。
 pub fn ks_to_srgb(ks: &KsSpectrum, transform: &RgbTransform) -> [f32; 3] {
     let refl = ks_to_reflectance(ks);
     let linear = spectrum_to_linear_rgb(&refl, transform);
@@ -140,23 +139,17 @@ pub fn ks_to_srgb(ks: &KsSpectrum, transform: &RgbTransform) -> [f32; 3] {
 mod tests {
     use super::*;
 
-    // CIEDE2000 test utilities
-
-    /// sRGB → XYZ (D65)
     fn srgb_to_xyz(r: f32, g: f32, b: f32) -> [f64; 3] {
         let rl = neco_color::srgb_to_linear(r) as f64;
         let gl = neco_color::srgb_to_linear(g) as f64;
         let bl = neco_color::srgb_to_linear(b) as f64;
-        // sRGB to XYZ (D65)
         let x = 0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl;
         let y = 0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl;
         let z = 0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl;
         [x, y, z]
     }
 
-    /// XYZ → Lab (D65)
     fn xyz_to_lab(xyz: [f64; 3]) -> [f64; 3] {
-        // D65 white point
         let xn = 0.95047;
         let yn = 1.0;
         let zn = 1.08883;
@@ -179,7 +172,7 @@ mod tests {
         [l, a, b]
     }
 
-    /// CIEDE2000 color difference.
+    /// CIEDE2000 の色差を返します。
     fn delta_e_2000(lab1: [f64; 3], lab2: [f64; 3]) -> f64 {
         let (l1, a1, b1) = (lab1[0], lab1[1], lab1[2]);
         let (l2, a2, b2) = (lab2[0], lab2[1], lab2[2]);
@@ -247,57 +240,47 @@ mod tests {
             .sqrt()
     }
 
-    /// Compute CIEDE2000 between two sRGB colors.
     fn srgb_delta_e(rgb1: [f32; 3], rgb2: [f32; 3]) -> f64 {
         let lab1 = xyz_to_lab(srgb_to_xyz(rgb1[0], rgb1[1], rgb1[2]));
         let lab2 = xyz_to_lab(srgb_to_xyz(rgb2[0], rgb2[1], rgb2[2]));
         delta_e_2000(lab1, lab2)
     }
 
-    // Pipeline smoke test
-
     #[test]
     fn pipeline_basic() {
         let transform = illuminant_d65();
         let ks = rgb_to_ks(0.8, 0.2, 0.3).expect("pipeline should work");
         let result = ks_to_srgb(&ks, transform);
-        // Output should be in valid range
         for (c, &value) in result.iter().enumerate() {
             assert!((0.0..=1.0).contains(&value), "ch {c}: {}", value);
         }
     }
 
-    // Round-trip test (22+ colors)
-
     fn representative_colors() -> Vec<(f32, f32, f32)> {
         vec![
-            // 6 primaries
             (1.0, 0.0, 0.0),
             (0.0, 1.0, 0.0),
             (0.0, 0.0, 1.0),
             (1.0, 1.0, 0.0),
             (1.0, 0.0, 1.0),
             (0.0, 1.0, 1.0),
-            // Black & white
             (1.0, 1.0, 1.0),
             (0.0, 0.0, 0.0),
-            // Grays
             (0.25, 0.25, 0.25),
             (0.5, 0.5, 0.5),
             (0.75, 0.75, 0.75),
-            // 12 intermediate colors
-            (1.0, 0.5, 0.0), // Orange
-            (0.5, 1.0, 0.0), // Lime
-            (0.0, 1.0, 0.5), // Spring green
-            (0.0, 0.5, 1.0), // Azure
-            (0.5, 0.0, 1.0), // Violet
-            (1.0, 0.0, 0.5), // Rose
-            (0.8, 0.4, 0.2), // Brown
-            (0.2, 0.6, 0.4), // Teal
-            (0.6, 0.2, 0.8), // Purple
-            (0.9, 0.9, 0.1), // Bright yellow
-            (0.1, 0.1, 0.9), // Dark blue
-            (0.4, 0.7, 0.3), // Grass green
+            (1.0, 0.5, 0.0),
+            (0.5, 1.0, 0.0),
+            (0.0, 1.0, 0.5),
+            (0.0, 0.5, 1.0),
+            (0.5, 0.0, 1.0),
+            (1.0, 0.0, 0.5),
+            (0.8, 0.4, 0.2),
+            (0.2, 0.6, 0.4),
+            (0.6, 0.2, 0.8),
+            (0.9, 0.9, 0.1),
+            (0.1, 0.1, 0.9),
+            (0.4, 0.7, 0.3),
         ]
     }
 
@@ -350,8 +333,6 @@ mod tests {
         assert!((max_a - max_b).abs() < 1e-12);
     }
 
-    // Mixing tests
-
     #[test]
     fn mixing_blue_yellow_gives_green_direction() {
         let transform = illuminant_d65();
@@ -363,7 +344,6 @@ mod tests {
             "blue+yellow = [{:.3}, {:.3}, {:.3}]",
             result[0], result[1], result[2]
         );
-        // KM mixing: blue+yellow should produce green/teal, not gray
         assert!(
             result[1] + result[2] > result[0] * 5.0,
             "not green-ish (gray like RGB linear mixing): {:?}",
@@ -383,7 +363,6 @@ mod tests {
             "red+blue = [{:.3}, {:.3}, {:.3}]",
             result[0], result[1], result[2]
         );
-        // Purple: R and B should exceed G
         assert!(
             result[0] > result[1] && result[2] > result[1],
             "not purple-ish: {:?}",
@@ -402,7 +381,6 @@ mod tests {
             "red+white = [{:.3}, {:.3}, {:.3}]",
             result[0], result[1], result[2]
         );
-        // Pink: R should be dominant
         assert!(
             result[0] > result[1] && result[0] > result[2],
             "R not dominant: {:?}",
@@ -426,7 +404,6 @@ mod tests {
             "blue+white = [{:.3}, {:.3}, {:.3}]",
             result[0], result[1], result[2]
         );
-        // Light blue: B should be dominant
         assert!(
             result[2] > result[0] && result[2] > result[1],
             "B not dominant: {:?}",
@@ -461,15 +438,12 @@ mod tests {
         assert!(de < 1e-3, "ΔE₀₀={de}");
     }
 
-    // Quantitative mixing test: N=41 vs N=401 ground truth
-
-    /// Ground-truth mixing at 1nm resolution (N=401).
+    /// 1 nm 間隔で混合を計算する参照値です。
     fn mixing_gt_401(coeffs_a: &SigmoidCoeffs, coeffs_b: &SigmoidCoeffs, t: f32) -> [f32; 3] {
         use crate::illuminant::{CMF_X, CMF_Y, CMF_Z, ILLUMINANT_D65};
 
         const N_GT: usize = 401;
 
-        // Evaluate sigmoid spectrum at 1nm resolution
         let eval_401 = |coeffs: &SigmoidCoeffs| -> Vec<f64> {
             (0..N_GT)
                 .map(|i| {
@@ -486,7 +460,6 @@ mod tests {
         let refl_a = eval_401(coeffs_a);
         let refl_b = eval_401(coeffs_b);
 
-        // KM mixing in K/S space
         let ks_max = 1000.0f64;
         let refl_to_ks = |r: f64| -> f64 {
             let r = r.clamp(0.0, 1.0);
@@ -518,7 +491,6 @@ mod tests {
             })
             .collect();
 
-        // XYZ integration at 401 points (linearly interpolated 10nm CMF to 1nm)
         let interp_cmf = |cmf: &[f32; 41], i_1nm: usize| -> f64 {
             let idx_f = i_1nm as f64 / 10.0;
             let idx = idx_f as usize;
@@ -538,14 +510,12 @@ mod tests {
             ILLUMINANT_D65[idx] as f64 * (1.0 - frac) + ILLUMINANT_D65[idx + 1] as f64 * frac
         };
 
-        // Y normalization
         let mut sum_y_s = 0.0f64;
         for i in 0..N_GT {
             sum_y_s += interp_cmf(&CMF_Y, i) * interp_illum(i);
         }
         let k = 1.0 / sum_y_s;
 
-        // XYZ to linear sRGB (D65)
         let xyz_to_srgb: [[f64; 3]; 3] = [
             [
                 3.2404541621141054,
@@ -601,13 +571,11 @@ mod tests {
             let coeffs_a = rgb_to_sigmoid(r1, g1, b1).unwrap();
             let coeffs_b = rgb_to_sigmoid(r2, g2, b2).unwrap();
 
-            // N=41 result
             let ks_a = rgb_to_ks(r1, g1, b1).unwrap();
             let ks_b = rgb_to_ks(r2, g2, b2).unwrap();
             let mixed_41 = ks_mix(&ks_a, &ks_b, 0.5);
             let result_41 = ks_to_srgb(&mixed_41, transform);
 
-            // N=401 ground truth
             let result_401 = mixing_gt_401(&coeffs_a, &coeffs_b, 0.5);
 
             let de = srgb_delta_e(result_41, result_401);
@@ -625,14 +593,11 @@ mod tests {
         }
     }
 
-    // Numerical stability tests
-
     #[test]
     fn stability_black() {
         let transform = illuminant_d65();
         let ks = rgb_to_ks(0.0, 0.0, 0.0).unwrap();
         let _result = ks_to_srgb(&ks, transform);
-        // Should not panic
     }
 
     #[test]
@@ -659,8 +624,6 @@ mod tests {
         }
     }
 
-    // GN convergence test for all representative colors
-
     #[test]
     fn gn_convergence_all_representative_colors() {
         let colors = representative_colors();
@@ -668,8 +631,6 @@ mod tests {
             rgb_to_sigmoid(r, g, b).unwrap_or_else(|e| panic!("GN failed for ({r},{g},{b}): {e}"));
         }
     }
-
-    // Pigment tests
 
     #[test]
     fn pigment_from_srgb_basic() {
@@ -727,7 +688,6 @@ mod tests {
         let p2 = p.clone();
         assert_eq!(p.srgb, p2.srgb);
         assert_eq!(p.ks.ks, p2.ks.ks);
-        // Debug trait produces non-empty output
         let dbg = format!("{:?}", p);
         assert!(dbg.contains("Pigment"));
     }

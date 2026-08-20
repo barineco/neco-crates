@@ -2,9 +2,6 @@ use crate::point3::Point3;
 
 const DEGENERATE_VOL_EPS: f64 = 1e-30;
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
 fn dist(a: &Point3, b: &Point3) -> f64 {
     a.distance(b)
 }
@@ -28,9 +25,6 @@ fn tet_pts<'a>(nodes: &'a [Point3], tet: &[usize; 4]) -> [&'a Point3; 4] {
         &nodes[tet[3]],
     ]
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 pub fn circumcenter(nodes: &[Point3], tet: &[usize; 4]) -> Option<Point3> {
     let [a, b, c, d] = tet_pts(nodes, tet);
@@ -75,10 +69,6 @@ pub fn circumradius(nodes: &[Point3], tet: &[usize; 4]) -> f64 {
     }
 }
 
-// ---------------------------------------------------------------------------
-// radius-edge ratio
-// ---------------------------------------------------------------------------
-
 pub fn radius_edge_ratio(nodes: &[Point3], tet: &[usize; 4]) -> f64 {
     let pts = tet_pts(nodes, tet);
     let edges = edge_lengths(pts);
@@ -96,13 +86,8 @@ pub fn radius_edge_ratio(nodes: &[Point3], tet: &[usize; 4]) -> f64 {
     r / min_edge
 }
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
 fn dihedral_angles(nodes: &[Point3], tet: &[usize; 4]) -> [f64; 6] {
     let [a, b, c, d] = tet_pts(nodes, tet);
-
-    //
 
     let compute = |p0: &Point3, p1: &Point3, p2: &Point3, p3: &Point3| -> f64 {
         let e01 = p1.sub(p0);
@@ -150,9 +135,6 @@ pub fn max_dihedral_angle(nodes: &[Point3], tet: &[usize; 4]) -> f64 {
     let angles = dihedral_angles(nodes, tet);
     angles.iter().copied().fold(f64::NEG_INFINITY, f64::max)
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct QualityStats {
@@ -219,9 +201,6 @@ pub fn mesh_quality_stats(nodes: &[Point3], tets: &[[usize; 4]], threshold: f64)
         num_slivers,
     }
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

@@ -1,24 +1,22 @@
-//! Mesh invariant validation.
+//! 三角形メッシュの不変条件を検証します。
 
 use crate::tessellate::TriMesh;
 use crate::vec3;
 use std::collections::HashMap;
 
+/// メッシュの閉水密性、辺の向き、退化面、符号付き体積、オイラー標数、連結成分数です。
 #[derive(Debug, Clone)]
 pub struct MeshValidation {
-    /// Every edge is shared by exactly 2 triangles.
     pub is_watertight: bool,
-    /// Adjacent triangles traverse shared edges in opposite directions.
     pub is_consistently_oriented: bool,
     pub has_no_degenerate_faces: bool,
     pub signed_volume: f64,
-    /// Euler characteristic (V - E + F).
     pub euler_number: i64,
     pub n_connected_components: usize,
 }
 
 impl TriMesh {
-    /// Validate mesh invariants.
+    /// 閉水密性は全辺を二面が共有し、向きの整合性は各有向辺が一度ずつ逆向きに現れるとき成立します。
     pub fn validate(&self) -> MeshValidation {
         let half_edges = build_half_edge_map(&self.triangles);
         let edge_counts = build_edge_counts(&self.triangles);
@@ -43,7 +41,6 @@ impl TriMesh {
     }
 }
 
-/// Half-edge map: (a, b) -> occurrence count.
 fn build_half_edge_map(triangles: &[[usize; 3]]) -> HashMap<(usize, usize), usize> {
     let mut map = HashMap::new();
     for tri in triangles {
@@ -56,7 +53,6 @@ fn build_half_edge_map(triangles: &[[usize; 3]]) -> HashMap<(usize, usize), usiz
     map
 }
 
-/// Edge count: (min, max) -> occurrence count.
 fn build_edge_counts(triangles: &[[usize; 3]]) -> HashMap<(usize, usize), usize> {
     let mut map = HashMap::new();
     for tri in triangles {
@@ -70,23 +66,19 @@ fn build_edge_counts(triangles: &[[usize; 3]]) -> HashMap<(usize, usize), usize>
     map
 }
 
-/// Watertight: every edge shared by exactly 2 triangles.
 fn check_watertight(edge_counts: &HashMap<(usize, usize), usize>) -> bool {
     edge_counts.values().all(|&count| count == 2)
 }
 
-/// Consistent orientation: each half-edge (a, b) has a reverse (b, a).
 fn check_consistent_orientation(half_edges: &HashMap<(usize, usize), usize>) -> bool {
     for &(a, b) in half_edges.keys() {
         if !half_edges.contains_key(&(b, a)) {
             return false;
         }
     }
-    // Each half-edge must appear exactly once.
     half_edges.values().all(|&count| count == 1)
 }
 
-/// Degenerate triangle check: area > 1e-20.
 fn check_no_degenerate(vertices: &[[f64; 3]], triangles: &[[usize; 3]]) -> bool {
     for tri in triangles {
         let v0 = vertices[tri[0]];
@@ -100,7 +92,6 @@ fn check_no_degenerate(vertices: &[[f64; 3]], triangles: &[[usize; 3]]) -> bool 
     true
 }
 
-/// Signed volume via divergence theorem.
 fn compute_signed_volume(vertices: &[[f64; 3]], triangles: &[[usize; 3]]) -> f64 {
     let mut volume = 0.0;
     for tri in triangles {
@@ -112,12 +103,10 @@ fn compute_signed_volume(vertices: &[[f64; 3]], triangles: &[[usize; 3]]) -> f64
     volume / 6.0
 }
 
-/// Euler number: V - E + F.
 fn compute_euler_number(n_vertices: usize, n_edges: usize, n_faces: usize) -> i64 {
     n_vertices as i64 - n_edges as i64 + n_faces as i64
 }
 
-/// Connected components via union-find.
 fn compute_connected_components(n_vertices: usize, triangles: &[[usize; 3]]) -> usize {
     if n_vertices == 0 {
         return 0;
@@ -149,7 +138,6 @@ fn compute_connected_components(n_vertices: usize, triangles: &[[usize; 3]]) -> 
         }
     }
 
-    // Union vertices referenced by triangles.
     let mut used = vec![false; n_vertices];
     for tri in triangles {
         used[tri[0]] = true;
@@ -159,7 +147,6 @@ fn compute_connected_components(n_vertices: usize, triangles: &[[usize; 3]]) -> 
         union(&mut parent, &mut rank, tri[0], tri[2]);
     }
 
-    // Count distinct roots among used vertices.
     let mut roots = std::collections::HashSet::new();
     for (i, is_used) in used.iter().enumerate().take(n_vertices) {
         if *is_used {
@@ -187,7 +174,6 @@ mod tests {
 
     #[test]
     fn tetrahedron_watertight() {
-        // Regular tetrahedron
         let mesh = TriMesh {
             vertices: vec![
                 [0.0, 0.0, 0.0],
@@ -196,12 +182,7 @@ mod tests {
                 [0.5, 0.289, 0.816],
             ],
             normals: vec![[0.0, 0.0, 1.0]; 4],
-            triangles: vec![
-                [0, 2, 1], // bottom (outward)
-                [0, 1, 3], // front
-                [1, 2, 3], // right
-                [2, 0, 3], // left
-            ],
+            triangles: vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]],
         };
         let v = mesh.validate();
         assert!(v.is_watertight, "tetrahedron not watertight");
@@ -222,7 +203,7 @@ mod tests {
     fn empty_mesh() {
         let mesh = TriMesh::new();
         let v = mesh.validate();
-        assert!(v.is_watertight); // vacuously true: no edges
+        assert!(v.is_watertight);
         assert!(v.is_consistently_oriented);
         assert!(v.has_no_degenerate_faces);
         assert!((v.signed_volume).abs() < 1e-20);

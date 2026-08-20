@@ -9,8 +9,8 @@ use crate::vec3;
 #[derive(Debug, Clone)]
 pub struct TriMesh {
     pub vertices: Vec<[f64; 3]>,
-    pub normals: Vec<[f64; 3]>,     // per-vertex
-    pub triangles: Vec<[usize; 3]>, // vertex indices
+    pub normals: Vec<[f64; 3]>,
+    pub triangles: Vec<[usize; 3]>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -55,7 +55,6 @@ impl TriMesh {
             return;
         }
 
-        // Compute vertex remap
         let mut remap = vec![0usize; n];
         let mut new_vertices: Vec<[f64; 3]> = Vec::new();
         let mut new_normals: Vec<[f64; 3]> = Vec::new();
@@ -82,7 +81,6 @@ impl TriMesh {
             }
         }
 
-        // Remap triangle indices
         for tri in &mut self.triangles {
             tri[0] = remap[tri[0]];
             tri[1] = remap[tri[1]];
@@ -95,10 +93,7 @@ impl TriMesh {
 }
 
 impl Shell {
-    /// Convert the Shell to a triangle mesh.
-    ///
-    /// `density` is the number of parametric subdivisions per axis.
-    /// Plane faces use constrained Delaunay triangulation (CDT).
+    /// Shell を三角形メッシュへ変換します。分割数が 2 未満では 2 を用います。平面面は外周ループだけを扱い、穴は扱いません。
     pub fn tessellate(&self, density: usize) -> Result<TriMesh, CdtError> {
         let density = density.max(2);
         let mut mesh = TriMesh::new();
@@ -124,7 +119,6 @@ impl Shell {
             mesh.merge(&face_mesh);
         }
 
-        // Weld duplicate vertices for watertightness
         mesh.weld_vertices(1e-10);
 
         Ok(mesh)
@@ -167,7 +161,6 @@ fn tessellate_plane(
     edges: &[Edge],
     density: usize,
 ) -> Result<TriMesh, CdtError> {
-    // Sample curved boundary edges so plane trims follow arc / spline boundaries too.
     let pts_3d = collect_loop_points(face, edges, density);
     match tessellate_plane_polygon(face, &pts_3d) {
         Ok(mesh) if !mesh.triangles.is_empty() => Ok(mesh),
@@ -184,7 +177,6 @@ fn tessellate_plane_polygon(face: &Face, pts_3d: &[[f64; 3]]) -> Result<TriMesh,
         normal = vec3::scale(normal, -1.0);
     }
 
-    // Build local coordinate frame
     let n = vec3::normalized(normal);
     let up = if n[0].abs() < 0.9 {
         [1.0, 0.0, 0.0]
@@ -198,10 +190,8 @@ fn tessellate_plane_polygon(face: &Face, pts_3d: &[[f64; 3]]) -> Result<TriMesh,
         return Ok(TriMesh::new());
     }
 
-    // Use first vertex as local origin
     let origin = pts_3d[0];
 
-    // Project 3D to 2D
     let pts_2d: Vec<[f64; 2]> = pts_3d
         .iter()
         .map(|p| {
@@ -210,7 +200,6 @@ fn tessellate_plane_polygon(face: &Face, pts_3d: &[[f64; 3]]) -> Result<TriMesh,
         })
         .collect();
 
-    // Compute bounding box
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -229,15 +218,12 @@ fn tessellate_plane_polygon(face: &Face, pts_3d: &[[f64; 3]]) -> Result<TriMesh,
         max_y + margin,
     );
 
-    // Triangulate via CDT
     let mut cdt = neco_cdt::Cdt::new(bounds);
     cdt.add_constraint_edges(&pts_2d, true)?;
     let cdt_tris = cdt.triangles();
 
-    // Build result mesh
     let mut mesh = TriMesh::new();
 
-    // Map CDT user_vertices back to 3D
     let user_verts = cdt.user_vertices();
     for uv in user_verts {
         let p3d = vec3::add(
@@ -248,9 +234,7 @@ fn tessellate_plane_polygon(face: &Face, pts_3d: &[[f64; 3]]) -> Result<TriMesh,
         mesh.normals.push(normal);
     }
 
-    // Add only triangles whose centroid lies inside the polygon
     for tri in &cdt_tris {
-        // Centroid-in-polygon test
         let centroid_2d = [
             (user_verts[tri[0]][0] + user_verts[tri[1]][0] + user_verts[tri[2]][0]) / 3.0,
             (user_verts[tri[0]][1] + user_verts[tri[1]][1] + user_verts[tri[2]][1]) / 3.0,
@@ -371,7 +355,6 @@ fn tessellate_parametric_full(face: &Face, density: usize) -> TriMesh {
 
     let mut mesh = TriMesh::new();
 
-    // Generate grid vertices and normals
     for iv in 0..=nv {
         let v = v_min + (v_max - v_min) * iv as f64 / nv as f64;
         for iu in 0..=nu {
@@ -386,7 +369,6 @@ fn tessellate_parametric_full(face: &Face, density: usize) -> TriMesh {
         }
     }
 
-    // Split quad grid into triangles
     let cols = nu + 1;
     for iv in 0..nv {
         for iu in 0..nu {
@@ -969,20 +951,17 @@ mod tests {
     fn make_box_shell() -> Shell {
         let mut shell = Shell::new();
 
-        // 8 vertices
         let v = [
-            shell.add_vertex([0.0, 0.0, 0.0]), // 0: ---
-            shell.add_vertex([1.0, 0.0, 0.0]), // 1: +--
-            shell.add_vertex([1.0, 1.0, 0.0]), // 2: ++-
-            shell.add_vertex([0.0, 1.0, 0.0]), // 3: -+-
-            shell.add_vertex([0.0, 0.0, 1.0]), // 4: --+
-            shell.add_vertex([1.0, 0.0, 1.0]), // 5: +-+
-            shell.add_vertex([1.0, 1.0, 1.0]), // 6: +++
-            shell.add_vertex([0.0, 1.0, 1.0]), // 7: -++
+            shell.add_vertex([0.0, 0.0, 0.0]),
+            shell.add_vertex([1.0, 0.0, 0.0]),
+            shell.add_vertex([1.0, 1.0, 0.0]),
+            shell.add_vertex([0.0, 1.0, 0.0]),
+            shell.add_vertex([0.0, 0.0, 1.0]),
+            shell.add_vertex([1.0, 0.0, 1.0]),
+            shell.add_vertex([1.0, 1.0, 1.0]),
+            shell.add_vertex([0.0, 1.0, 1.0]),
         ];
 
-        // 12 line edges
-        // Bottom (z=0): 0-1, 1-2, 2-3, 3-0
         let e_bot = [
             shell.add_edge(
                 v[0],
@@ -1018,7 +997,6 @@ mod tests {
             ),
         ];
 
-        // Top (z=1): 4-5, 5-6, 6-7, 7-4
         let e_top = [
             shell.add_edge(
                 v[4],
@@ -1054,7 +1032,6 @@ mod tests {
             ),
         ];
 
-        // Vertical: 0-4, 1-5, 2-6, 3-7
         let e_vert = [
             shell.add_edge(
                 v[0],
@@ -1090,26 +1067,24 @@ mod tests {
             ),
         ];
 
-        // 6 faces
-        // Bottom (z=0): normal -Z, CCW from outside -> 0-3-2-1 (reversed)
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
                     edge_id: e_bot[3],
                     forward: false,
-                }, // 0←3
+                },
                 EdgeRef {
                     edge_id: e_bot[2],
                     forward: false,
-                }, // 3←2
+                },
                 EdgeRef {
                     edge_id: e_bot[1],
                     forward: false,
-                }, // 2←1
+                },
                 EdgeRef {
                     edge_id: e_bot[0],
                     forward: false,
-                }, // 1←0
+                },
             ],
             surface: Surface::Plane {
                 origin: [0.0, 0.0, 0.0],
@@ -1118,7 +1093,6 @@ mod tests {
             orientation_reversed: false,
         });
 
-        // Top (z=1): normal +Z, edges 4-5-6-7
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
@@ -1145,25 +1119,24 @@ mod tests {
             orientation_reversed: false,
         });
 
-        // Front (y=0): normal -Y, edges 0-1-5-4
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
                     edge_id: e_bot[0],
                     forward: true,
-                }, // 0→1
+                },
                 EdgeRef {
                     edge_id: e_vert[1],
                     forward: true,
-                }, // 1→5
+                },
                 EdgeRef {
                     edge_id: e_top[0],
                     forward: false,
-                }, // 5←4
+                },
                 EdgeRef {
                     edge_id: e_vert[0],
                     forward: false,
-                }, // 4←0
+                },
             ],
             surface: Surface::Plane {
                 origin: [0.0, 0.0, 0.0],
@@ -1172,25 +1145,24 @@ mod tests {
             orientation_reversed: false,
         });
 
-        // Right (x=1): normal +X, edges 1-2-6-5
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
                     edge_id: e_bot[1],
                     forward: true,
-                }, // 1→2
+                },
                 EdgeRef {
                     edge_id: e_vert[2],
                     forward: true,
-                }, // 2→6
+                },
                 EdgeRef {
                     edge_id: e_top[1],
                     forward: false,
-                }, // 6←5
+                },
                 EdgeRef {
                     edge_id: e_vert[1],
                     forward: false,
-                }, // 5←1
+                },
             ],
             surface: Surface::Plane {
                 origin: [1.0, 0.0, 0.0],
@@ -1199,25 +1171,24 @@ mod tests {
             orientation_reversed: false,
         });
 
-        // Back (y=1): normal +Y, edges 2-3-7-6
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
                     edge_id: e_bot[2],
                     forward: true,
-                }, // 2→3
+                },
                 EdgeRef {
                     edge_id: e_vert[3],
                     forward: true,
-                }, // 3→7
+                },
                 EdgeRef {
                     edge_id: e_top[2],
                     forward: false,
-                }, // 7←6
+                },
                 EdgeRef {
                     edge_id: e_vert[2],
                     forward: false,
-                }, // 6←2
+                },
             ],
             surface: Surface::Plane {
                 origin: [0.0, 1.0, 0.0],
@@ -1226,25 +1197,24 @@ mod tests {
             orientation_reversed: false,
         });
 
-        // Left (x=0): normal -X, edges 3-0-4-7
         shell.faces.push(Face {
             loop_edges: vec![
                 EdgeRef {
                     edge_id: e_bot[3],
                     forward: true,
-                }, // 3→0
+                },
                 EdgeRef {
                     edge_id: e_vert[0],
                     forward: true,
-                }, // 0→4
+                },
                 EdgeRef {
                     edge_id: e_top[3],
                     forward: false,
-                }, // 4←7
+                },
                 EdgeRef {
                     edge_id: e_vert[3],
                     forward: false,
-                }, // 7←3
+                },
             ],
             surface: Surface::Plane {
                 origin: [0.0, 0.0, 0.0],
@@ -1261,7 +1231,6 @@ mod tests {
         let shell = make_box_shell();
         let mesh = shell.tessellate(4).unwrap();
 
-        // 6 faces x 4 vertices = 24 vertices (each face has independent vertices)
         assert!(!mesh.vertices.is_empty(), "vertices empty");
         assert!(
             mesh.triangles.len() >= 12,
@@ -1305,8 +1274,6 @@ mod tests {
         let mesh = shell.tessellate(16).unwrap();
         assert!(!mesh.vertices.is_empty());
         assert!(!mesh.triangles.is_empty());
-        // 16*16*2 = 512 triangles
-        // Welding merges poles and u=0/u=2pi seam, so vertex count < 289
         assert_eq!(mesh.triangles.len(), 16 * 16 * 2);
         assert!(
             mesh.vertices.len() < 17 * 17,

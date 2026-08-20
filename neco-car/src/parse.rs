@@ -4,6 +4,9 @@ use neco_cid::Cid;
 use crate::error::CarError;
 use crate::types::{CarEntry, CarV1};
 
+/// CAR v1 のバイト列を読み取り、ルート CID とブロックを返します。
+/// ヘッダーは長さを表す varint と DAG-CBOR のマップで構成され、版 1 と CID リンクの配列を持ちます。
+/// 切り詰め、64 ビットを超える varint、無効なヘッダー・CID・セクションは `CarError` を返します。
 pub fn parse_v1(input: &[u8]) -> Result<CarV1, CarError> {
     let (header_len, mut offset) = decode_varint(input)?;
     let header_len = header_len as usize;
@@ -63,8 +66,6 @@ pub fn parse_v1(input: &[u8]) -> Result<CarV1, CarError> {
 
         let (cid, cid_len) = Cid::from_bytes(section).map_err(CarError::InvalidBlockCid)?;
 
-        // Defensive guard: Cid::from_bytes reports consuming more than available.
-        // In practice, Cid::from_bytes would fail first with InvalidBlockCid.
         if cid_len > section_len {
             return Err(CarError::BlockLengthMismatch);
         }

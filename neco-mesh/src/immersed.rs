@@ -1,11 +1,11 @@
-//! Immersed-boundary meshing on a structured grid with per-tetrahedron fill fractions.
+//! 三角形表面から充填率付きの四面体メッシュを生成します。
 
 use crate::internal_mesh3d::Mesh3D;
 use crate::point3::Point3;
 use crate::types::{ImmersedMesh, TetMesh3D};
 use neco_stl::TriSurface;
 
-/// Generate an immersed tetrahedral mesh from a triangle surface mesh.
+/// 三角形表面を入力に、各四面体の充填率を持つメッシュを返します。
 pub fn generate_immersed_mesh(
     surface_nodes: &[[f64; 3]],
     surface_triangles: &[[usize; 3]],
@@ -115,7 +115,6 @@ pub fn generate_immersed_mesh(
             nodes: mesh.nodes.into_iter().map(Into::into).collect(),
             tetrahedra: mesh.tetrahedra,
         },
-        // compact_mesh receives fill fractions above, so it must preserve them here.
         fill_fractions: ff.expect("compact_mesh should preserve fill fractions when provided"),
     }
 }

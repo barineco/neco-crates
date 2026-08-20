@@ -1,10 +1,3 @@
-//! Coverage tests for degenerate analytic-surface intersection pairs.
-//!
-//! These cases exercise coaxial, parallel, tangent, separated, cone half-angle,
-//! and self-intersecting torus configurations to ensure
-//! `face_face_intersection` does not panic and returns an empty vector when no
-//! intersection exists.
-
 use neco_brep::boolean3d::intersect3d::face_face_intersection;
 use neco_brep::boolean3d::BooleanEvent;
 use neco_brep::vec3;
@@ -14,11 +7,6 @@ use neco_brep::{
 };
 use std::f64::consts::{FRAC_PI_4, PI, TAU};
 
-// ============================================================
-// Helpers: build minimal one-face shells.
-// ============================================================
-
-/// Build a minimal shell containing one planar face.
 fn plane_shell(origin: [f64; 3], normal: [f64; 3]) -> Shell {
     let surface = Surface::Plane { origin, normal };
     let n = vec3::normalized(normal);
@@ -77,7 +65,6 @@ fn plane_shell(origin: [f64; 3], normal: [f64; 3]) -> Shell {
     shell
 }
 
-/// Build a minimal shell containing one cylindrical face.
 fn cylinder_shell(origin: [f64; 3], axis: [f64; 3], radius: f64) -> Shell {
     let surface = Surface::Cylinder {
         origin,
@@ -135,7 +122,6 @@ fn cylinder_shell(origin: [f64; 3], axis: [f64; 3], radius: f64) -> Shell {
     shell
 }
 
-/// Build a minimal shell containing one conical face.
 fn cone_shell(origin: [f64; 3], axis: [f64; 3], half_angle: f64) -> Shell {
     let surface = Surface::Cone {
         origin,
@@ -165,7 +151,6 @@ fn cone_shell(origin: [f64; 3], axis: [f64; 3], half_angle: f64) -> Shell {
     shell
 }
 
-/// Build an ellipsoid shell.
 fn ellipsoid_shell_at(center: [f64; 3], rx: f64, ry: f64, rz: f64) -> Shell {
     let mut s = shell_from_ellipsoid(rx, ry, rz);
     if center[0].abs() > 1e-15 || center[1].abs() > 1e-15 || center[2].abs() > 1e-15 {
@@ -180,7 +165,6 @@ fn ellipsoid_shell_at(center: [f64; 3], rx: f64, ry: f64, rz: f64) -> Shell {
     s
 }
 
-/// sphere shell at a given center
 fn sphere_shell_at(center: [f64; 3], radius: f64) -> Shell {
     let mut s = shell_from_sphere(radius);
     if center[0].abs() > 1e-15 || center[1].abs() > 1e-15 || center[2].abs() > 1e-15 {
@@ -195,7 +179,6 @@ fn sphere_shell_at(center: [f64; 3], radius: f64) -> Shell {
     s
 }
 
-/// torus shell at a given center with Y axis
 fn torus_shell_at(center: [f64; 3], major: f64, minor: f64) -> Shell {
     let mut s = shell_from_torus(major, minor);
     if center[0].abs() > 1e-15 || center[1].abs() > 1e-15 || center[2].abs() > 1e-15 {
@@ -210,7 +193,6 @@ fn torus_shell_at(center: [f64; 3], major: f64, minor: f64) -> Shell {
     s
 }
 
-/// Run `face_face_intersection` on two single-face shells and return the curves.
 fn intersect_faces(shell_a: &Shell, shell_b: &Shell) -> Vec<Curve3D> {
     let mut events: Vec<BooleanEvent> = Vec::new();
     let mut all_curves = Vec::new();
@@ -222,10 +204,6 @@ fn intersect_faces(shell_a: &Shell, shell_b: &Shell) -> Vec<Curve3D> {
     }
     all_curves
 }
-
-// ============================================================
-// B-1: shared degenerate cases (coaxial, parallel, tangent, separated)
-// ============================================================
 
 mod coaxial {
     use super::*;
@@ -421,10 +399,6 @@ mod separated {
     }
 }
 
-// ============================================================
-// B-2: cone-specific half-angle boundary values
-// ============================================================
-
 mod cone_degenerate {
     use super::*;
 
@@ -502,18 +476,10 @@ mod cone_degenerate {
     }
 }
 
-// ============================================================
-// B-3: torus-specific cases (self-intersecting when major == minor)
-// ============================================================
-
 mod torus_degenerate {
     use super::*;
 
     fn self_intersecting_torus() -> Shell {
-        // `major_radius == minor_radius` creates a self-intersecting torus.
-        // In neco-brep, `shell_from_torus(major, minor)` is centered at the
-        // origin around the Z axis. The original source test used a Y-axis
-        // torus, but this degenerate case only needs to avoid panicking.
         shell_from_torus(1.0, 1.0)
     }
 
@@ -547,16 +513,11 @@ mod torus_degenerate {
 
     #[test]
     fn plane_torus_through_center() {
-        // The torus equatorial plane for a Z-axis torus is the XY plane.
         let p = plane_shell([0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
         let t = shell_from_torus(2.0, 0.5);
         let _ = intersect_faces(&p, &t);
     }
 }
-
-// ============================================================
-// B-4: all 21 non-intersection pairs
-// ============================================================
 
 mod no_intersection_all_pairs {
     use super::*;

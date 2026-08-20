@@ -1,4 +1,6 @@
-//! Finite-difference stencil operators on uniform 2D grids.
+//! 一様な二次元格子の有限差分ステンシル演算子。
+//! 格子値は `i * ny + j` の行優先順で格納する。入力と出力の長さは `nx * ny` でなければならない。
+//! rayon 経路では入力を重複して読み取るが、各反復の出力先は異なる内部格子要素になる。
 use core::fmt;
 
 #[cfg(feature = "rayon")]
@@ -75,6 +77,7 @@ fn assert_len_mut(
 }
 
 #[inline]
+/// 5 点差分のラプラシアンを `out` に書き込む。長さ不一致は失敗し、幅または高さが 3 未満なら零で満たす。
 pub fn laplacian(
     u: &[f64],
     nx: usize,
@@ -126,6 +129,7 @@ pub fn laplacian(
 }
 
 #[inline]
+/// x 方向の中心差分を `out` に書き込む。長さ不一致は失敗し、幅が 3 未満なら零で満たす。
 pub fn gradient_x(
     u: &[f64],
     nx: usize,
@@ -149,6 +153,7 @@ pub fn gradient_x(
 }
 
 #[inline]
+/// y 方向の中心差分を `out` に書き込む。長さ不一致は失敗し、高さが 3 未満なら零で満たす。
 pub fn gradient_y(
     u: &[f64],
     nx: usize,
@@ -172,6 +177,7 @@ pub fn gradient_y(
 }
 
 #[inline]
+/// x 方向の二階中心差分を `out` に書き込む。長さ不一致は失敗し、幅が 3 未満なら零で満たす。
 pub fn d2_dx2(
     u: &[f64],
     nx: usize,
@@ -196,6 +202,7 @@ pub fn d2_dx2(
 }
 
 #[inline]
+/// y 方向の二階中心差分を `out` に書き込む。長さ不一致は失敗し、高さが 3 未満なら零で満たす。
 pub fn d2_dy2(
     u: &[f64],
     nx: usize,
@@ -220,6 +227,7 @@ pub fn d2_dy2(
 }
 
 #[inline]
+/// 混合二階中心差分を `out` に書き込む。長さ不一致は失敗し、いずれかの寸法が 3 未満なら零で満たす。
 pub fn d2_dxdy(
     u: &[f64],
     nx: usize,
@@ -246,6 +254,7 @@ pub fn d2_dxdy(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `w` の一次・二次差分を各出力へ書き込む。全スライスの長さ不一致は失敗し、いずれかの寸法が 3 未満なら零で満たす。
 pub fn w_derivatives(
     w: &[f64],
     nx: usize,
@@ -334,6 +343,7 @@ pub fn w_derivatives(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `u` と `v` の一次差分を各出力へ書き込む。全スライスの長さ不一致は失敗し、いずれかの寸法が 3 未満なら零で満たす。
 pub fn uv_gradients(
     u: &[f64],
     v: &[f64],
@@ -404,6 +414,7 @@ pub fn uv_gradients(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `d_grid * Δw` と `w` の導関数を出力へ書き込む。長さ不一致は失敗し、いずれかの寸法が 3 未満なら零で満たす。
 pub fn biharmonic_pass1_fused(
     w: &[f64],
     d_grid: &[f64],
@@ -507,6 +518,7 @@ pub fn biharmonic_pass1_fused(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `Δ(d_grid * Δw)` を計算し、中間値と結果を出力へ書き込む。長さ不一致は失敗し、いずれかの寸法が 3 未満なら零で満たす。
 pub fn biharmonic(
     w: &[f64],
     d_grid: &[f64],
@@ -616,6 +628,7 @@ pub fn biharmonic(
 }
 
 #[inline]
+/// 一様係数の双ラプラシアンを `bilap` に書き込む。長さ不一致は失敗し、いずれかの寸法が 5 未満なら零で満たす。
 pub fn bilaplacian_uniform(
     w: &[f64],
     nx: usize,
@@ -688,6 +701,7 @@ pub fn bilaplacian_uniform(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// 指定した内部セルの直交異方性双ラプラシアンを `bilap` に書き込む。スライス長の不一致は失敗する。
 pub fn bilaplacian_ortho_uniform(
     w: &[f64],
     nx: usize,

@@ -1,6 +1,6 @@
 [package]
 name = "neco-spectral"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -12,12 +12,18 @@ keywords = ["spectral", "clustering", "graph", "laplacian"]
 categories = ["algorithms", "mathematics", "science"]
 
 [dependencies]
-neco-eigensolve = { version = "=0.2.0", path = "../../../neco-algebra/neco-algebra-main/neco-eigensolve" }
-neco-eigensolve-faer = { version = "=0.1.0", path = "../../../neco-algebra/neco-algebra-main/neco-eigensolve-faer" }
-neco-generalized-eigen = { version = "=0.1.0", path = "../../../neco-algebra/neco-algebra-main/neco-generalized-eigen" }
+neco-eigensolve = { version = "=0.2.1", path = "../../../neco-algebra/neco-algebra-main/neco-eigensolve" }
+neco-eigensolve-faer = { version = "=0.1.1", path = "../../../neco-algebra/neco-algebra-main/neco-eigensolve-faer" }
+neco-expr = { version = "=0.1.2", path = "../../../neco-algebra/neco-algebra-main/neco-expr" }
+neco-generalized-eigen = { version = "=0.2.0", path = "../../../neco-algebra/neco-algebra-main/neco-generalized-eigen" }
 neco-kmeans = { version = "=0.1.0", path = "../neco-kmeans" }
+neco-linear-dense = { version = "=0.1.0", path = "../../../neco-algebra/neco-algebra-main/neco-linear-dense" }
+neco-linear-exact = { version = "=0.1.2", path = "../../../neco-algebra/neco-algebra-main/neco-linear-exact" }
 neco-linear-types = { version = "=0.1.0", path = "../../../neco-algebra/neco-algebra-main/neco-linear-types" }
 neco-sparse = { version = "=0.2.0", path = "../../../neco-algebra/neco-algebra-main/neco-sparse" }
+
+[dev-dependencies]
+neco-formsum = { version = "=0.1.1", path = "../../../neco-algebra/neco-algebra-main/neco-formsum" }
 
 [lib]
 path = "src/lib.rs"

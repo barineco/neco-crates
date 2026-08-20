@@ -113,8 +113,6 @@ fn from_box_face_loops_closed() {
     }
 }
 
-// --- Plane-plane intersection ---
-
 #[test]
 fn plane_plane_intersection_perpendicular() {
     let xy = Surface::Plane {
@@ -167,8 +165,6 @@ fn plane_plane_coplanar() {
     }
 }
 
-// --- Box-box integration tests ---
-
 #[test]
 fn two_boxes_intersection_edges() {
     let shell_a = shell_from_box_at([0.0, 0.0, 0.0], 2.0, 1.0, 1.0);
@@ -189,8 +185,6 @@ fn two_boxes_intersection_edges() {
         segments.len()
     );
 }
-
-// --- Ray-cast inside/outside classification ---
 
 #[test]
 fn point_inside_box_shell() {
@@ -215,8 +209,6 @@ fn point_on_face_of_box() {
     );
 }
 
-// --- face_polygon + SubFace ---
-
 #[test]
 fn face_polygon_extracts_vertices() {
     let shell = shell_from_box_at([0.0, 0.0, 0.0], 1.0, 1.0, 1.0);
@@ -231,8 +223,6 @@ fn subface_from_unsplit_face() {
     assert_eq!(subs.len(), 1);
     assert_eq!(subs[0].polygon.len(), 4);
 }
-
-// --- Polygon line splitting ---
 
 #[test]
 fn split_rectangular_face_by_line() {
@@ -272,11 +262,6 @@ fn split_face_by_two_cuts() {
     assert_eq!(subs.len(), 3, "2 parallel cuts should yield 3 SubFaces");
 }
 
-// --- Six-plane clipping of a whole mesh ---
-// NOTE: `clip_mesh_subtract_box` requires `Vec<[f64; 3]>` nodes instead of `Point3`.
-// generate_box_mesh is not available in neco-brep (it's in mfp-types).
-// These tests are marked #[ignore].
-
 #[test]
 #[ignore = "generate_box_mesh (mfp-types) does not exist in neco-brep"]
 fn clip_mesh_subtract_box_removes_interior() {}
@@ -284,8 +269,6 @@ fn clip_mesh_subtract_box_removes_interior() {}
 #[test]
 #[ignore = "generate_box_mesh (mfp-types) does not exist in neco-brep"]
 fn clip_mesh_volume_conservation() {}
-
-// --- Curve3D::Ellipse tests ---
 
 #[test]
 fn ellipse_evaluate_circle() {
@@ -343,8 +326,6 @@ fn ellipse_to_polyline_adapts() {
 #[test]
 #[ignore = "generate_box_mesh (mfp-types) does not exist in neco-brep"]
 fn clip_mesh_no_cracks() {}
-
-// --- Face selection ---
 
 #[test]
 fn select_faces_subtract() {
@@ -552,8 +533,6 @@ fn select_faces_same_direction_edge_contact_is_not_collapsed() {
     );
 }
 
-// --- `boolean_3d()` orchestrator ---
-
 #[test]
 fn boolean3d_subtract_overlapping_boxes() {
     use neco_brep::boolean_3d;
@@ -706,8 +685,6 @@ fn boolean3d_vertex_face_contact_subtract_keeps_minuend() {
     assert_shell_matches_exactly(&result, &a);
 }
 
-// --- Shell::bounding_box ---
-
 #[test]
 fn shell_bounding_box() {
     let shell = shell_from_box_at([1.0, 2.0, 3.0], 4.0, 5.0, 6.0);
@@ -720,16 +697,9 @@ fn shell_bounding_box() {
     assert!((max[2] - 9.0).abs() < 1e-10);
 }
 
-// --- shell_to_immersed_mesh / shell_to_clipped_mesh / boolean_mesh ---
-// These depend on mfp-types (generate_box_mesh, Mesh3D) and are not available in neco-brep.
-
 #[test]
 #[ignore = "shell_to_immersed_mesh does not exist in neco-brep (mfp-geo specific)"]
 fn shell_to_immersed_mesh_unit_box() {}
-
-// `boolean3d_subtract_to_mesh` moved to `tests/boolean_tessellation.rs`.
-
-// --- shell_from_extrude ---
 
 fn make_rect_region_2d(lx: f64, lz: f64) -> NurbsRegion {
     let pts = vec![[0.0, 0.0], [lx, 0.0], [lx, lz], [0.0, lz], [0.0, 0.0]];
@@ -799,8 +769,6 @@ fn from_extrude_point_in_shell() {
     assert!(point_in_shell(&[0.5, 0.5, 0.5], &shell));
     assert!(!point_in_shell(&[2.0, 0.5, 0.5], &shell));
 }
-
-// --- shell_from_revolve ---
 
 fn make_revolve_rect_profile() -> NurbsRegion {
     let pts = vec![[0.5, 0.0], [1.0, 0.0], [1.0, 1.0], [0.5, 1.0], [0.5, 0.0]];
@@ -883,8 +851,6 @@ fn from_revolve_normals_outward() {
     }
 }
 
-// --- End-to-end: Extrude/Revolve boolean ---
-
 #[test]
 fn extrude_vs_box_subtract() {
     use neco_brep::boolean_3d;
@@ -963,8 +929,6 @@ fn revolve_rect_profile_cylinder_faces() {
 
 #[test]
 fn box_subtract_revolve_to_mesh() {
-    // Validate only the boolean result. Mesh generation depends on
-    // `shell_to_immersed_mesh`, which does not exist in neco-brep.
     use neco_brep::boolean_3d;
 
     let shell_a = shell_from_box_at([-1.0, -1.0, -1.0], 2.0, 2.0, 2.0);
@@ -978,9 +942,6 @@ fn box_subtract_revolve_to_mesh() {
         result.faces.len()
     );
 }
-
-// --- Geometry3D / shell_from_geometry3d ---
-// These depend on mfp-geo's Geometry3D/BooleanOperand/Placement types.
 
 #[test]
 #[ignore = "Geometry3D does not exist in neco-brep (mfp-geo specific)"]
@@ -1029,8 +990,6 @@ fn lshape_extrude_concavity_outside() {
 #[ignore = "Geometry3D/BooleanOperand/Placement do not exist in neco-brep (mfp-geo specific)"]
 fn lshape_extrude_boolean_subtract_mesh() {}
 
-// --- predicates ---
-
 #[test]
 #[ignore = "predicates module does not exist in neco-brep (mfp-geo specific)"]
 fn orient2d_counterclockwise() {}
@@ -1060,8 +1019,6 @@ fn point_in_shell_on_face() {
     let on_face = [0.5, 0.0, 0.5];
     let _ = point_in_shell(&on_face, &shell);
 }
-
-// --- `tet_clip` tests ---
 
 #[test]
 fn clip_tet_all_positive() {
@@ -1149,8 +1106,6 @@ fn flip_does_not_worsen_quality() {}
 #[ignore = "generate_box_mesh (mfp-types) does not exist in neco-brep"]
 fn smoothing_preserves_boundary() {}
 
-// --- shell_to_clipped_mesh / boolean_mesh ---
-
 #[test]
 #[ignore = "shell_to_clipped_mesh (mfp-geo specific) does not exist in neco-brep"]
 fn clipped_mesh_box_subtract_sharp_edges() {}
@@ -1162,8 +1117,6 @@ fn clipped_vs_immersed_volume_comparison() {}
 #[test]
 #[ignore = "boolean_mesh (mfp-geo specific) does not exist in neco-brep"]
 fn boolean_mesh_selects_clipped_for_box() {}
-
-// --- `point_in_shell`: cylinder/cone coverage ---
 
 #[test]
 fn point_in_shell_cylinder_full_rotation() {
@@ -1227,8 +1180,6 @@ fn point_in_shell_cylinder_partial_rotation() {
     );
 }
 
-// --- Integration tests ---
-
 #[test]
 #[ignore = "shell_to_immersed_mesh does not exist in neco-brep (mfp-geo specific)"]
 fn immersed_mesh_from_cylinder_shell() {}
@@ -1252,8 +1203,6 @@ fn face_face_intersection_plane_cylinder() {
         "no Plane-Cylinder intersection curves were produced"
     );
 }
-
-// --- NurbsSurface tests ---
 
 #[test]
 fn nurbs_surface_evaluate_plane() {
@@ -1343,8 +1292,6 @@ fn nurbs_curve3d_evaluate_line() {
     assert!((mid[2] - 0.5).abs() < 1e-10);
 }
 
-// --- Surface boolean integration tests ---
-
 #[test]
 fn boolean3d_box_subtract_sphere_e2e() {
     use neco_brep::boolean_3d;
@@ -1360,7 +1307,6 @@ fn boolean3d_box_subtract_sphere_e2e() {
         ];
         apply_transform(&s, &m)
     };
-    // B-Rep boolean should not panic
     let _ = boolean_3d(&box_shell, &sphere, BooleanOp::Subtract);
 }
 
@@ -1370,9 +1316,6 @@ fn boolean3d_box_subtract_torus_e2e() {
     use neco_brep::shell_from_torus;
 
     let box_shell = shell_from_box_at([-2.0, -2.0, -2.0], 4.0, 4.0, 4.0);
-    // In neco-brep, `shell_from_torus` is centered at the origin around the Z
-    // axis. The original mfp-geo case used a Y-axis torus, but this test only
-    // needs to ensure the operation does not panic.
     let torus = shell_from_torus(1.0, 0.3);
     let _ = boolean_3d(&box_shell, &torus, BooleanOp::Subtract);
 }
@@ -1398,7 +1341,6 @@ fn boolean3d_revolve_vs_revolve_perpendicular() {
     };
     let cyl_y2 = shell_from_revolve(&profile2, Axis::Y, Radians::from_degrees(360.0)).unwrap();
 
-    // No panic is the primary requirement here.
     let _ = boolean_3d(&cyl_y, &cyl_y2, BooleanOp::Subtract);
 }
 
@@ -1506,8 +1448,6 @@ fn point_in_shell_thin_box_y_fallback() {
     );
 }
 
-// --- insert_steiner_point tests ---
-
 #[test]
 fn insert_steiner_point_basic() {
     use neco_brep::boolean3d::tet_clip::insert_steiner_point;
@@ -1605,8 +1545,6 @@ fn revolve_x_axis_bounding_box_not_degenerate() {
     assert!(dz > 0.1, "insufficient thickness along Z: {dz}");
 }
 
-// --- Integration tests: surface tetra-clip pipeline ---
-
 #[test]
 #[ignore = "generate_box_mesh / boolean_mesh (mfp-types / mfp-geo specific) do not exist in neco-brep"]
 fn test_box_minus_sphere_tet_clip() {}
@@ -1625,7 +1563,6 @@ fn box_subtract_ellipsoid_near_tangent() {
     use neco_brep::{boolean_3d, shell_from_ellipsoid};
 
     let box_shell = shell_from_box_at([0.0, 0.0, 0.0], 3.0, 2.0, 2.0);
-    // Sweep `rz` across 0.9..1.1 to reproduce tangency and penetration against the box faces.
     for i in 0..=20 {
         let rz = 0.9 + (i as f64) * 0.01;
         let ell = {
@@ -1639,7 +1576,6 @@ fn box_subtract_ellipsoid_near_tangent() {
             apply_transform(&e, &m)
         };
         let _ = boolean_3d(&box_shell, &ell, BooleanOp::Subtract);
-        // No panic is sufficient for this regression case.
     }
 }
 

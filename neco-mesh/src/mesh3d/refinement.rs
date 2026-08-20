@@ -1,4 +1,4 @@
-//! Constrained Delaunay Refinement.
+//! 制約付き Delaunay 細分化を実装します。
 
 use std::collections::HashSet;
 
@@ -8,9 +8,6 @@ use super::insertion::insert_vertex;
 use super::plc::PLC;
 use super::quality::{circumcenter, min_dihedral_angle, radius_edge_ratio};
 use super::tet_mesh::TetMesh;
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct RefinementParams {
@@ -25,7 +22,7 @@ impl Default for RefinementParams {
     fn default() -> Self {
         Self {
             max_radius_edge_ratio: 2.0,
-            min_dihedral_angle: 5.0_f64.to_radians(), // 0.0873 rad
+            min_dihedral_angle: 5.0_f64.to_radians(),
             max_iterations: 10_000,
             max_steiner_points: 50_000,
             relaxed_radius_factor: 0.3,
@@ -41,9 +38,6 @@ pub struct RefinementStats {
     pub final_max_radius_edge: f64,
     pub final_min_dihedral: f64,
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 pub fn encroaches_segment(mesh: &TetMesh, plc: &PLC, point: &Point3) -> Option<usize> {
     for (i, seg) in plc.segments.iter().enumerate() {
@@ -129,8 +123,6 @@ fn triangle_circumsphere(a: &Point3, b: &Point3, c: &Point3) -> Option<(Point3, 
         return None;
     }
 
-    //   2 * dot(ab, ab) * t1 + 2 * dot(ab, ac) * t2 = dot(ab, ab)
-    //   2 * dot(ab, ac) * t1 + 2 * dot(ac, ac) * t2 = dot(ac, ac)
     let d_ab = Point3::dot(&ab, &ab);
     let d_ac = Point3::dot(&ac, &ac);
     let d_ab_ac = Point3::dot(&ab, &ac);
@@ -153,9 +145,6 @@ fn triangle_circumsphere(a: &Point3, b: &Point3, c: &Point3) -> Option<(Point3, 
 
     Some((center, radius_sq))
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 fn insertion_radius(nodes: &[Point3], tet: &[usize; 4], cc: &Point3) -> f64 {
     tet.iter()
@@ -325,9 +314,6 @@ fn compute_final_stats(mesh: &TetMesh, threshold: f64) -> (usize, f64, f64) {
 
     (skinny_count, max_re, min_dih)
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

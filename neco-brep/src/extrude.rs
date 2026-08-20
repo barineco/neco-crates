@@ -5,10 +5,7 @@ use crate::vec3;
 
 use crate::transform::{elevate_bezier_2d, point2_to_point3, profile_vertices};
 
-/// Extrude a NurbsRegion along `direction` by `distance` to produce a Shell.
-///
-/// degree=1 profiles use Plane faces; degree>=2 profiles generate
-/// NurbsSurface / Plane side faces per Bezier span.
+/// プロファイルを指定方向へ指定距離だけ移動した `Shell` を返します。頂点またはベジエ区間を得られない場合は `Err` を返します。
 pub fn shell_from_extrude(
     profile: &NurbsRegion,
     direction: [f64; 3],
@@ -68,9 +65,7 @@ pub fn shell_from_extrude(
         forward: false,
     };
 
-    // Cap faces (closed profiles only)
     if is_closed {
-        // Bottom face: normal = -dir_norm, loop reversed
         {
             let mut loop_edges = Vec::with_capacity(n_edges);
             for i in (0..n_edges).rev() {
@@ -89,8 +84,6 @@ pub fn shell_from_extrude(
                 orientation_reversed: false,
             });
         }
-
-        // Top face: normal = +dir_norm
         {
             let loop_edges: Vec<EdgeRef> =
                 top_e.iter().take(n_edges).map(|&eid| fwd(eid)).collect();
@@ -109,7 +102,6 @@ pub fn shell_from_extrude(
         }
     }
 
-    // --- Side faces ---
     for i in 0..n_edges {
         let j = if is_closed { (i + 1) % n } else { i + 1 };
         let loop_edges = vec![
@@ -140,10 +132,7 @@ pub fn shell_from_extrude(
     Ok(shell)
 }
 
-/// Extrude Shell for degree>=2 profiles.
-///
-/// Splits into Bezier spans; degree=1 spans become Plane faces,
-/// degree>=2 spans become SurfaceOfSweep faces.
+/// 二次以上の曲線を含むプロファイルを押し出します。
 fn shell_from_extrude_nurbs(
     profile: &NurbsRegion,
     direction: [f64; 3],
@@ -167,8 +156,6 @@ fn shell_from_extrude_nurbs(
 
     let mut shell = Shell::new();
 
-    // Collect span endpoints (span i start = control_points[0])
-    // Last span end = first span start (closed curve)
     let mut bottom_pts: Vec<[f64; 3]> = Vec::new();
     for span in &spans {
         bottom_pts.push(point2_to_point3(&span.control_points[0]));
@@ -237,7 +224,6 @@ fn shell_from_extrude_nurbs(
         vert_e.push(shell.add_edge(bottom_v[i], top_v[i], line_curve(bottom_v[i], top_v[i])));
     }
 
-    // --- Bottom face ---
     {
         let mut loop_edges = Vec::with_capacity(n);
         for i in (0..n).rev() {
@@ -257,7 +243,6 @@ fn shell_from_extrude_nurbs(
         });
     }
 
-    // --- Top face ---
     {
         let loop_edges: Vec<EdgeRef> = (0..n).map(|i| fwd(top_e[i])).collect();
         let centroid = top_v
@@ -274,14 +259,10 @@ fn shell_from_extrude_nurbs(
         });
     }
 
-    // --- Side faces ---
-    // Group consecutive curved spans into a single SurfaceOfSweep face;
-    // degree=1 spans get individual Plane faces.
     {
         let mut i = 0;
         while i < n {
             if spans[i].degree >= 2 {
-                // Find contiguous range [i, group_end) of curved spans
                 let group_start = i;
                 let mut group_end = i + 1;
                 while group_end < n && spans[group_end].degree >= 2 {
@@ -289,7 +270,6 @@ fn shell_from_extrude_nurbs(
                 }
                 let group_len = group_end - group_start;
 
-                // Loop: bottom(fwd) -> right vertical(fwd) -> top(rev) -> left vertical(rev)
                 let mut loop_edges = Vec::new();
                 for &edge in bottom_e.iter().take(group_end).skip(group_start) {
                     loop_edges.push(fwd(edge));
@@ -300,7 +280,6 @@ fn shell_from_extrude_nurbs(
                 }
                 loop_edges.push(rev(vert_e[group_start]));
 
-                // Unify control points; apply degree elevation to match max degree
                 let max_degree = spans[group_start..group_end]
                     .iter()
                     .map(|s| s.degree)
@@ -330,14 +309,12 @@ fn shell_from_extrude_nurbs(
                     }
                 }
 
-                // Spine: straight line from origin along extrude direction
                 let spine_start = [0.0, 0.0, 0.0];
                 let spine_end = [
                     direction[0] * distance,
                     direction[1] * distance,
                     direction[2] * distance,
                 ];
-                // Frame: fixed XY profile coordinate system
                 let frame: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], direction];
                 shell.faces.push(Face {
                     loop_edges,
@@ -393,7 +370,6 @@ mod tests {
 
     #[test]
     fn extrude_degree2_nurbs_surface_faces() {
-        // Unit circle from 4 rational quadratic arc spans
         let w = std::f64::consts::FRAC_1_SQRT_2;
         let circle = NurbsCurve2D::new_rational(
             2,
@@ -420,7 +396,6 @@ mod tests {
 
         let shell = shell_from_extrude(&profile, [0.0, 0.0, 1.0], 2.0).unwrap();
 
-        // bottom(1) + top(1) + 1 merged side face = 3
         assert_eq!(shell.faces.len(), 3, "expected 3 faces (merged side)");
 
         let sweep_count = shell

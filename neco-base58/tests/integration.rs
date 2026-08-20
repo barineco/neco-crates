@@ -52,7 +52,6 @@ fn invalid_char_lowercase_l() {
 
 #[test]
 fn rejects_non_ascii_that_truncates_to_valid_byte() {
-    // U+0141 'Ł' truncates to 0x41 = 'A' via `as u8`
     assert_eq!(decode("Ł"), Err(Base58Error::InvalidCharacter('Ł')));
 }
 

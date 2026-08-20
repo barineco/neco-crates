@@ -7,10 +7,10 @@ publish = false
 [workspace]
 
 [dependencies]
-neco-eigensolve = "=0.2.0"
+neco-eigensolve = "=0.2.1"
 neco-linear-types = "=0.1.0"
-neco-minphase = "=0.1.1"
+neco-minphase = "=0.1.2"
 neco-modal = "=0.1.1"
 neco-sparse = "=0.2.0"
-neco-spectral = "=0.2.0"
+neco-spectral = "=0.2.1"
 neco-stft = "=0.1.1"

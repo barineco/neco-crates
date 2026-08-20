@@ -1,4 +1,4 @@
-//! ATProto signature interop tests (ES256 / P-256).
+//! ES256 と P-256 の相互運用検査です。
 
 use neco_json::{parse, JsonValue};
 use neco_p256::{EcdsaSignature, PublicKey, SecretKey};
@@ -6,8 +6,6 @@ use neco_sha2::Sha256;
 
 const SIGNATURE_FIXTURES: &str = include_str!("atproto-interop/signature-fixtures.json");
 const W3C_DIDKEY_P256: &str = include_str!("atproto-interop/w3c_didkey_P256.json");
-
-// --- base64 decoder ---
 
 fn decode_base64(input: &str) -> Vec<u8> {
     const TABLE: [u8; 128] = {
@@ -46,8 +44,6 @@ fn decode_base64(input: &str) -> Vec<u8> {
     out
 }
 
-// --- base58btc decoder ---
-
 fn decode_base58btc(input: &str) -> Vec<u8> {
     const ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -76,8 +72,6 @@ fn decode_base58btc(input: &str) -> Vec<u8> {
     result
 }
 
-// --- hex helpers ---
-
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut s = String::with_capacity(bytes.len() * 2);
@@ -87,8 +81,6 @@ fn hex_encode(bytes: &[u8]) -> String {
     }
     s
 }
-
-// --- JSON helpers ---
 
 fn json_str<'a>(value: &'a JsonValue, key: &str) -> &'a str {
     value
@@ -104,7 +96,6 @@ fn json_bool(value: &JsonValue, key: &str) -> bool {
         .unwrap_or_else(|| panic!("missing or non-bool key: {key}"))
 }
 
-/// publicKeyMultibase (z + base58btc) → raw 33-byte SEC1 compressed public key
 fn pubkey_from_multibase(multibase: &str) -> PublicKey {
     let without_prefix = multibase
         .strip_prefix('z')
@@ -119,7 +110,6 @@ fn pubkey_from_multibase(multibase: &str) -> PublicKey {
     PublicKey::from_sec1_bytes(&decoded).expect("invalid P-256 public key")
 }
 
-/// did:key (multicodec varint 0x80 0x24 for P-256) → 33-byte SEC1 compressed public key
 fn pubkey_from_did_key(did_key: &str) -> PublicKey {
     let multibase = did_key
         .strip_prefix("did:key:")
@@ -133,7 +123,6 @@ fn pubkey_from_did_key(did_key: &str) -> PublicKey {
         "did:key decoded too short: {}",
         decoded.len()
     );
-    // P-256 multicodec: varint 0x80 0x24
     assert_eq!(
         decoded[0], 0x80,
         "expected P-256 multicodec byte 0, got 0x{:02x}",
@@ -178,18 +167,14 @@ fn atproto_signature_verification_p256() {
             .unwrap_or(&[]);
         let is_der = tags.iter().any(|t| t.as_str() == Some("der-encoded"));
 
-        // 公開鍵: publicKeyMultibase は z + base58btc(33-byte SEC1)
         let pubkey = pubkey_from_multibase(multibase);
 
-        // メッセージ → SHA-256
         let message = decode_base64(message_b64);
         let digest: [u8; 32] = Sha256::digest(&message);
 
-        // 署名のデコード
         let sig_bytes = decode_base64(sig_b64);
 
         if is_der {
-            // DER-encoded: 64 バイトではないので from_bytes に渡せない → 不正扱い
             assert_ne!(
                 sig_bytes.len(),
                 64,
@@ -232,7 +217,6 @@ fn w3c_didkey_p256_private_to_public() {
     assert!(!items.is_empty(), "no w3c didkey P256 fixtures");
 
     for fixture in items {
-        // P-256 fixture は privateKeyBytesBase58 形式
         let priv_b58 = json_str(fixture, "privateKeyBytesBase58");
         let public_did_key = json_str(fixture, "publicDidKey");
 
@@ -246,11 +230,9 @@ fn w3c_didkey_p256_private_to_public() {
         let mut priv_arr = [0u8; 32];
         priv_arr.copy_from_slice(&priv_bytes);
 
-        // did:key から公開鍵を抽出
         let expected_pk = pubkey_from_did_key(public_did_key);
         let expected_sec1 = expected_pk.to_sec1_bytes();
 
-        // 秘密鍵 → 公開鍵
         let sk = SecretKey::from_bytes(priv_arr).expect("invalid secret key bytes");
         let pk = sk.public_key().expect("failed to derive public key");
         let pk_sec1 = pk.to_sec1_bytes();

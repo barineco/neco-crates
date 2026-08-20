@@ -6,9 +6,6 @@ use super::insertion::insert_vertex;
 use super::plc::PLC;
 use super::tet_mesh::TetMesh;
 
-// ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────
-
 fn face_verts(tet: &[usize; 4], fi: usize) -> [usize; 3] {
     match fi {
         0 => [tet[1], tet[2], tet[3]],
@@ -43,10 +40,6 @@ fn ensure_positive_orientation(nodes: &[Point3], mut tet: [usize; 4]) -> [usize;
     }
     tet
 }
-
-// ────────────────────────────────────────────────────────────────
-// flip_2_3
-// ────────────────────────────────────────────────────────────────
 
 pub fn flip_2_3(mesh: &mut TetMesh, tet_a: usize, tet_b: usize) -> Result<[usize; 3], String> {
     let fi_a = (0..4)
@@ -158,10 +151,6 @@ fn reconnect_external_neighbors(
     }
 }
 
-// ────────────────────────────────────────────────────────────────
-// flip_3_2
-// ────────────────────────────────────────────────────────────────
-
 pub fn flip_3_2(mesh: &mut TetMesh, edge: (usize, usize)) -> Result<[usize; 2], String> {
     let (a, b) = edge;
     let ring = mesh.edge_ring(a, b);
@@ -262,10 +251,6 @@ pub fn flip_3_2(mesh: &mut TetMesh, edge: (usize, usize)) -> Result<[usize; 2], 
     Ok(new_indices)
 }
 
-// ────────────────────────────────────────────────────────────────
-// flipnm
-// ────────────────────────────────────────────────────────────────
-
 pub fn flipnm(mesh: &mut TetMesh, edge: (usize, usize), level: usize) -> bool {
     let (a, b) = edge;
     let ring = mesh.edge_ring(a, b);
@@ -365,10 +350,6 @@ pub fn flipnm(mesh: &mut TetMesh, edge: (usize, usize), level: usize) -> bool {
 
     false
 }
-
-// ────────────────────────────────────────────────────────────────
-// Edge / Face Recovery
-// ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
 pub struct RecoveryStats {
@@ -572,7 +553,6 @@ pub fn split_edge_with_steiner(mesh: &mut TetMesh, v1: usize, v2: usize) -> Resu
         (p1.z + p2.z) / 2.0,
     );
 
-    // compact tombstones before insertion to ensure clean state
     mesh.compact_tombstones();
 
     insert_vertex(mesh, midpoint)
@@ -666,9 +646,6 @@ fn face_exists_in_mesh(mesh: &TetMesh, v0: usize, v1: usize, v2: usize) -> bool 
     false
 }
 
-// ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,13 +701,12 @@ mod tests {
 
     fn make_two_tet_mesh() -> TetMesh {
         let nodes = vec![
-            Point3::new(0.0, 0.0, 0.0), // 0
-            Point3::new(1.0, 0.0, 0.0), // 1
-            Point3::new(0.5, 1.0, 0.0), // 2
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.5, 1.0, 0.0),
             Point3::new(0.5, 0.4, 1.0),
             Point3::new(0.5, 0.4, -1.0),
         ];
-        // tet_a: [0,1,2,3], tet_b: [0,1,2,4]
         let mut tet_a = [0, 1, 2, 3];
         let mut tet_b = [0, 1, 2, 4];
         if signed_volume(&nodes, &tet_a) < 0.0 {
@@ -751,11 +727,11 @@ mod tests {
 
     fn make_three_tet_mesh() -> TetMesh {
         let nodes = vec![
-            Point3::new(0.0, 0.0, -0.5),  // 0
-            Point3::new(0.0, 0.0, 0.5),   // 1
-            Point3::new(1.0, 0.0, 0.0),   // 2
-            Point3::new(-0.5, 1.0, 0.0),  // 3
-            Point3::new(-0.5, -1.0, 0.0), // 4
+            Point3::new(0.0, 0.0, -0.5),
+            Point3::new(0.0, 0.0, 0.5),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(-0.5, 1.0, 0.0),
+            Point3::new(-0.5, -1.0, 0.0),
         ];
 
         let mut t0 = [0, 1, 2, 3];
@@ -903,12 +879,12 @@ mod tests {
 
     fn make_four_tet_mesh() -> TetMesh {
         let nodes = vec![
-            Point3::new(0.0, 0.0, -0.5), // 0
-            Point3::new(0.0, 0.0, 0.5),  // 1
-            Point3::new(1.0, 0.0, 0.0),  // 2
-            Point3::new(0.0, 1.0, 0.0),  // 3
-            Point3::new(-1.0, 0.0, 0.0), // 4
-            Point3::new(0.0, -1.0, 0.0), // 5
+            Point3::new(0.0, 0.0, -0.5),
+            Point3::new(0.0, 0.0, 0.5),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(0.0, -1.0, 0.0),
         ];
 
         let mut t0 = [0, 1, 2, 3];
@@ -967,7 +943,6 @@ mod tests {
 
         let vol_original: f64 = mesh.tets.iter().map(|t| sv(&mesh.nodes, t).abs()).sum();
 
-        // 2→3
         let _new = flip_2_3(&mut mesh, 0, 1).expect("flip_2_3 should succeed");
         mesh.compact_tombstones();
         assert_eq!(mesh.tets.len(), 3);
@@ -1040,22 +1015,16 @@ mod tests {
         let mut mesh = build_delaunay(&points).expect("build_delaunay should succeed");
 
         let triangles = vec![
-            // bottom (z=0)
             [0, 1, 2],
             [1, 3, 2],
-            // top (z=1)
             [4, 6, 5],
             [5, 6, 7],
-            // front (y=0)
             [0, 4, 1],
             [1, 4, 5],
-            // back (y=1)
             [2, 3, 6],
             [3, 7, 6],
-            // left (x=0)
             [0, 2, 4],
             [2, 6, 4],
-            // right (x=1)
             [1, 5, 3],
             [3, 5, 7],
         ];

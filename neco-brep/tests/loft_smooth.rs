@@ -74,7 +74,6 @@ fn loft_smooth_shell_generation() {
     ];
 
     let shell = shell_from_loft(&sections, LoftMode::Smooth).unwrap();
-    // face count = (n_sections - 1) side faces + 2 caps = 2 + 2 = 4
     assert_eq!(
         shell.faces.len(),
         4,

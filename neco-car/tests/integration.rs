@@ -123,7 +123,6 @@ fn error_invalid_block_cid() {
     let header_end = varint_size + header_len as usize;
 
     let mut bad_car = good_car[..header_end].to_vec();
-    // version=99 は無効な CID
     let bad_cid_bytes = [99u8, 0x55, 0x12, 0x20];
     let section_len = bad_cid_bytes.len() + 3;
     encode_varint(section_len as u64, &mut bad_car);
@@ -148,7 +147,6 @@ fn error_header_not_map() {
 
 #[test]
 fn error_varint_overflow() {
-    // 10 bytes of continuation bits = overflow
     let bad_varint: Vec<u8> = vec![0xFF; 10];
     let result = parse_v1(&bad_varint);
     assert_eq!(result.unwrap_err(), CarError::VarintOverflow);
@@ -192,7 +190,6 @@ fn error_roots_not_array() {
 
 #[test]
 fn error_invalid_cid_link_in_roots() {
-    // Root is a plain integer, not a tag 42 CID link
     let header = neco_cbor::CborValue::Map(vec![
         (
             neco_cbor::CborValue::Text("roots".into()),

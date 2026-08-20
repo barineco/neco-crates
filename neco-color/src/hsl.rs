@@ -1,4 +1,4 @@
-/// Convert sRGB [0,1] to HSL (H in 0..1).
+/// 各成分が 0 以上 1 以下の sRGB を HSL に変換する。
 pub fn srgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -22,7 +22,7 @@ pub fn srgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     (h, s, l)
 }
 
-/// Convert HSL to sRGB [0,1].
+/// HSL を、各成分が 0 以上 1 以下の sRGB に変換する。
 pub fn hsl_to_srgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     if s.abs() < f32::EPSILON {
         return (l, l, l);

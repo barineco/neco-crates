@@ -1,4 +1,4 @@
-/// Compute CIE xy chromaticity from correlated color temperature T [K] (Kim et al. 1999).
+/// 相関色温度をケルビンで受け取り、CIE xy 色度を計算します ( Kim ほか、1999 年 )。
 pub fn cct_to_xy(t: f64) -> (f64, f64) {
     let t2 = t * t;
     let t3 = t2 * t;

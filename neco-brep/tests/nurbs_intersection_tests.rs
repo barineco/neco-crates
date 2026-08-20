@@ -6,7 +6,6 @@ use neco_brep::boolean3d::nurbs_intersect::{
 use neco_brep::Surface;
 use neco_nurbs::NurbsSurface3D;
 
-/// Biquadratic patch with degree 2 x 2, 3x3 control points, and uniform weights.
 fn biquadratic_patch() -> NurbsSurface3D {
     NurbsSurface3D {
         degree_u: 2,
@@ -27,16 +26,13 @@ fn insert_knot_u_preserves_shape() {
     let surf = biquadratic_patch();
     let inserted = surf.insert_knot_u(0.5);
 
-    // Knot-vector length and control-point count must stay consistent.
     assert_eq!(inserted.knots_u.len(), surf.knots_u.len() + 1);
     assert_eq!(inserted.control_points.len(), surf.control_points.len() + 1);
-    // The V-direction control-point count stays unchanged.
     assert_eq!(
         inserted.control_points[0].len(),
         surf.control_points[0].len()
     );
 
-    // Surface evaluation should remain unchanged after insertion.
     let tol = 1e-12;
     for &u in &[0.0, 0.25, 0.5, 0.75, 1.0] {
         for &v in &[0.0, 0.25, 0.5, 0.75, 1.0] {
@@ -59,16 +55,13 @@ fn insert_knot_v_preserves_shape() {
     let surf = biquadratic_patch();
     let inserted = surf.insert_knot_v(0.5);
 
-    // Knot-vector length and control-point count must stay consistent.
     assert_eq!(inserted.knots_v.len(), surf.knots_v.len() + 1);
     assert_eq!(
         inserted.control_points[0].len(),
         surf.control_points[0].len() + 1
     );
-    // The U-direction control-point count stays unchanged.
     assert_eq!(inserted.control_points.len(), surf.control_points.len());
 
-    // Surface evaluation should remain unchanged after insertion.
     let tol = 1e-12;
     for &u in &[0.0, 0.25, 0.5, 0.75, 1.0] {
         for &v in &[0.0, 0.25, 0.5, 0.75, 1.0] {
@@ -86,9 +79,6 @@ fn insert_knot_v_preserves_shape() {
     }
 }
 
-// ---- Bezier patch decomposition tests ----
-
-/// Test surface with two U spans, degree 3, and an internal knot at 0.5.
 fn two_span_u_patch() -> NurbsSurface3D {
     NurbsSurface3D {
         degree_u: 3,
@@ -122,7 +112,6 @@ fn single_span_is_single_patch() {
     assert_eq!(patch.control_points.len(), 3);
     assert_eq!(patch.control_points[0].len(), 3);
 
-    // Patch evaluation must match the original surface.
     let tol = 1e-12;
     for &u in &[0.0, 0.25, 0.5, 0.75, 1.0] {
         for &v in &[0.0, 0.25, 0.5, 0.75, 1.0] {
@@ -150,7 +139,6 @@ fn two_span_u_decomposes_to_two_patches() {
         "two U spans should decompose into two patches"
     );
 
-    // Check parameter ranges.
     let (u0_min, u0_max) = patches[0].u_range();
     let (u1_min, u1_max) = patches[1].u_range();
     assert!((u0_min - 0.0).abs() < 1e-14);
@@ -158,13 +146,11 @@ fn two_span_u_decomposes_to_two_patches() {
     assert!((u1_min - 0.5).abs() < 1e-14);
     assert!((u1_max - 1.0).abs() < 1e-14);
 
-    // Each patch should have `(degree_u + 1) x (degree_v + 1)` control points.
     for patch in &patches {
         assert_eq!(patch.control_points.len(), 4); // degree_u + 1 = 4
         assert_eq!(patch.control_points[0].len(), 3); // degree_v + 1 = 3
     }
 
-    // Boundary continuity: both patches should agree at `u = 0.5`.
     let tol = 1e-10;
     for &v in &[0.0, 0.25, 0.5, 0.75, 1.0] {
         let p0 = patches[0].evaluate(0.5, v);
@@ -177,11 +163,9 @@ fn two_span_u_decomposes_to_two_patches() {
         );
     }
 
-    // Check against the original surface.
     for &u in &[0.0, 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0] {
         for &v in &[0.0, 0.5, 1.0] {
             let p_orig = surf.evaluate(u, v);
-            // Evaluate on the corresponding patch.
             let p_patch = if u <= 0.5 {
                 patches[0].evaluate(u, v)
             } else {
@@ -209,7 +193,6 @@ fn patch_aabb_contains_patch() {
         let (u_min, u_max) = patch.u_range();
         let (v_min, v_max) = patch.v_range();
 
-        // Sample points from the patch should stay inside the AABB.
         let tol = 1e-12;
         for i in 0..=10 {
             let u = u_min + (u_max - u_min) * (i as f64 / 10.0);
@@ -235,9 +218,6 @@ fn patch_aabb_contains_patch() {
     }
 }
 
-// ---- NurbsSurface x Plane intersection tests ----
-
-/// Cut the biquadratic patch by the plane `z = 0.25` and verify all points lie near that height.
 #[test]
 fn nurbs_plane_bisects_biquadratic_patch() {
     let surf = biquadratic_patch();
@@ -274,7 +254,6 @@ fn nurbs_plane_bisects_biquadratic_patch() {
     );
 }
 
-/// The plane `z = 5.0` should not intersect the biquadratic patch with `z` range `[0, 1]`.
 #[test]
 fn nurbs_plane_no_intersection() {
     let surf = biquadratic_patch();
@@ -289,7 +268,6 @@ fn nurbs_plane_no_intersection() {
     );
 }
 
-/// Intersection of the two-span patch with the plane `z = 0.5`.
 #[test]
 fn nurbs_plane_two_span_intersection() {
     let surf = two_span_u_patch();
@@ -321,9 +299,6 @@ fn nurbs_plane_two_span_intersection() {
     );
 }
 
-// ---- NurbsSurface x Quadric intersection tests ----
-
-/// Intersect `two_span_u_patch` with a sphere and verify every point lies on the sphere.
 #[test]
 fn nurbs_sphere_intersection() {
     let surf = two_span_u_patch();
@@ -361,7 +336,6 @@ fn nurbs_sphere_intersection() {
     );
 }
 
-/// Intersect `two_span_u_patch` with a cylinder and verify every point lies on the cylinder.
 #[test]
 fn nurbs_cylinder_intersection() {
     let surf = two_span_u_patch();
@@ -400,7 +374,6 @@ fn nurbs_cylinder_intersection() {
     );
 }
 
-/// `biquadratic_patch` against a far sphere should yield no intersection.
 #[test]
 fn nurbs_quadric_no_intersection() {
     let surf = biquadratic_patch();
@@ -417,9 +390,6 @@ fn nurbs_quadric_no_intersection() {
     );
 }
 
-// ---- NurbsSurface x Torus intersection tests ----
-
-/// Intersect `two_span_u_patch` with a torus and verify every point lies on the torus.
 #[test]
 fn nurbs_torus_intersection_basic() {
     let surf = two_span_u_patch();
@@ -457,9 +427,6 @@ fn nurbs_torus_intersection_basic() {
     );
 }
 
-// ---- NurbsSurface x NurbsSurface intersection tests ----
-
-/// Intersect two NURBS patches and verify that each point stays close to both surfaces.
 #[test]
 fn nurbs_nurbs_intersection_basic() {
     let surf_a = biquadratic_patch();
@@ -510,7 +477,6 @@ fn nurbs_nurbs_intersection_basic() {
     );
 }
 
-/// Estimate the minimum distance from `target` to a NURBS surface via grid search and Newton projection.
 fn min_dist_to_surface(surface: &NurbsSurface3D, target: &[f64; 3]) -> f64 {
     let (u_min, u_max) = surface.u_range();
     let (v_min, v_max) = surface.v_range();
@@ -573,7 +539,6 @@ fn min_dist_to_surface(surface: &NurbsSurface3D, target: &[f64; 3]) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-/// Check that pruning remains effective on multi-span NURBS input.
 #[test]
 fn convex_hull_pruning_reduces_candidate_patches() {
     let n_cp = 12;
@@ -625,8 +590,6 @@ fn convex_hull_pruning_reduces_candidate_patches() {
         }
     }
 }
-
-// ---- NurbsSurface degenerate-case tests ----
 
 #[test]
 fn nurbs_plane_tangent_no_panic() {
