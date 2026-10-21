@@ -1,4 +1,4 @@
-//! 2D boolean operations module
+//! 二次元 Boolean 演算。
 
 pub mod classify;
 pub mod combine;
@@ -7,6 +7,7 @@ pub mod intersect;
 use crate::types::BooleanOp;
 use neco_nurbs::{dedup_piecewise_sample, NurbsCurve2D, NurbsRegion};
 
+/// 二次元 Boolean 演算が返す領域の集合。
 #[derive(Clone, Debug, Default)]
 pub struct RegionSet {
     pub regions: Vec<NurbsRegion>,
@@ -34,13 +35,11 @@ impl RegionSet {
     }
 }
 
-/// 2D point-to-point distance
 #[inline]
 fn dist2(a: [f64; 2], b: [f64; 2]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
 }
 
-/// Intersection result between two NURBS curves.
 #[derive(Clone, Debug)]
 pub enum Intersection {
     Point {
@@ -48,17 +47,14 @@ pub enum Intersection {
         t_a: f64,
         t_b: f64,
     },
-    /// Collinear overlap interval
+    /// 共線な曲線区間の重なりです。各組は入力曲線上のパラメータ範囲を表します。
     Overlap {
         t_a: (f64, f64),
         t_b: (f64, f64),
     },
 }
 
-/// 2D boolean operation on two NurbsRegion.
-///
-/// Only single-region results are supported; multiple regions return an error.
-/// Collinear edges are handled via overlap detection + normal-based classification.
+/// 二つの `NurbsRegion` に演算を適用して一領域を返します。結果が零個または複数なら失敗します。共線辺は重複検出と法線方向で分類します。
 pub fn boolean_2d(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<NurbsRegion, String> {
     let result = boolean_2d_all(a, b, op)?;
     match result.len() {
@@ -74,7 +70,7 @@ pub fn boolean_2d(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<Nur
     }
 }
 
-/// 2D boolean operation returning zero or more regions.
+/// 二つの `NurbsRegion` に演算を適用し、零個以上の領域を返します。
 pub fn boolean_2d_all(
     a: &NurbsRegion,
     b: &NurbsRegion,
@@ -83,24 +79,20 @@ pub fn boolean_2d_all(
     boolean_2d_inner(a, b, op)
 }
 
-/// Kind of a split segment.
 #[derive(Clone, Debug)]
 pub enum SegmentKind {
     Normal,
-    /// Overlap segment classified by normal direction
     Overlap {
         other_curve_t_mid: f64,
         other_curve_index: usize,
     },
 }
 
-/// Piecewise overlap info: (segment_index, local_t_start, local_t_end) pairs.
 struct PiecewiseOverlap {
     my: (usize, f64, f64),
     other: (usize, f64, f64),
 }
 
-/// Classify each split segment as Normal or Overlap.
 fn classify_segment_kinds(
     segs: &[NurbsCurve2D],
     overlaps: &[PiecewiseOverlap],
@@ -124,7 +116,6 @@ fn classify_segment_kinds(
                 let (my_seg_idx, my_t0, my_t1) = *my;
                 let (other_seg_idx, other_t0, other_t1) = *other;
 
-                // Check if this segment belongs to the split range of the source segment
                 let split_start = seg_offsets[my_seg_idx];
                 let split_end = if my_seg_idx + 1 < seg_offsets.len() {
                     seg_offsets[my_seg_idx + 1]
@@ -135,13 +126,12 @@ fn classify_segment_kinds(
                     continue;
                 }
 
-                // Normalize interval for reverse traversal
                 let (my_lo, my_hi) = if my_t0 <= my_t1 {
                     (my_t0, my_t1)
                 } else {
                     (my_t1, my_t0)
                 };
-                // Check if segment midpoint falls within the overlap interval
+
                 if t_mid >= my_lo - 1e-8 && t_mid <= my_hi + 1e-8 {
                     let other_mid = 0.5 * (other_t0 + other_t1);
                     return SegmentKind::Overlap {
@@ -159,7 +149,6 @@ fn boolean_2d_inner(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<R
     let outer_a = &a.outer;
     let outer_b = &b.outer;
 
-    // Find intersections for all segment pairs, collecting local t per segment
     let mut params_a: Vec<Vec<f64>> = vec![Vec::new(); outer_a.len()];
     let mut params_b: Vec<Vec<f64>> = vec![Vec::new(); outer_b.len()];
     let mut pw_overlaps: Vec<PiecewiseOverlap> = Vec::new();
@@ -196,7 +185,6 @@ fn boolean_2d_inner(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<R
 
     let eps = 1e-10;
 
-    // Sort, dedup, and exclude endpoints from local t values, then split
     fn prepare_and_split(
         outer: &[NurbsCurve2D],
         params: &mut [Vec<f64>],
@@ -226,7 +214,6 @@ fn boolean_2d_inner(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<R
     let (segs_a, seg_offsets_a) = prepare_and_split(outer_a, &mut params_a, eps);
     let (segs_b, seg_offsets_b) = prepare_and_split(outer_b, &mut params_b, eps);
 
-    // If all split params were excluded as endpoints and no overlaps, treat as no intersection
     let all_trivial_a = segs_a.len() == outer_a.len();
     let all_trivial_b = segs_b.len() == outer_b.len();
     if all_trivial_a && all_trivial_b && pw_overlaps.is_empty() {
@@ -248,14 +235,12 @@ fn boolean_2d_inner(a: &NurbsRegion, b: &NurbsRegion, op: BooleanOp) -> Result<R
     Ok(region_set_from_loops(loops))
 }
 
-/// Sample start point from the first segment's start parameter.
 fn sample_start_point(outer: &[NurbsCurve2D]) -> [f64; 2] {
     let seg = &outer[0];
     let t_start = seg.knots[seg.degree];
     seg.evaluate(t_start)
 }
 
-/// Handle case with no intersections (containment or disjoint).
 fn handle_no_intersection(
     a: &NurbsRegion,
     b: &NurbsRegion,
@@ -278,7 +263,6 @@ fn handle_no_intersection(
         }
         BooleanOp::Subtract => {
             if b_in_a {
-                // B is inside A: return B as a hole
                 Ok(RegionSet::new(vec![NurbsRegion {
                     outer: a.outer.clone(),
                     holes: vec![b.outer.clone()],
@@ -286,7 +270,6 @@ fn handle_no_intersection(
             } else if a_in_b {
                 Ok(RegionSet::default())
             } else {
-                // Disjoint: A unchanged
                 Ok(RegionSet::new(vec![a.clone()]))
             }
         }

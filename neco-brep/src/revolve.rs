@@ -6,11 +6,7 @@ use crate::transform::elevate_bezier_2d;
 use crate::types::Axis;
 use crate::vec3;
 
-/// Revolve a NurbsRegion around `axis` by `angle` to produce a Shell.
-///
-/// Profile Point2(x, y): x = radius, y = axial coordinate.
-/// degree=1 -> analytic surfaces (Cylinder / Cone / Plane);
-/// degree>=2 -> NurbsSurface per Bezier span.
+/// プロファイルを指定軸の周りに指定角度だけ回転した Shell を返します。プロファイルの第 1 成分は半径、第 2 成分は軸方向の座標です。部分回転では両端に平面を生成します。
 pub fn shell_from_revolve(
     profile: &NurbsRegion,
     axis: Axis,
@@ -29,7 +25,6 @@ pub fn shell_from_revolve(
 
     let axis_vec = axis.direction();
 
-    // Convert [f64; 2](radius, axis_coord) to 3D at angle theta
     let rotate_point = |p2: &[f64; 2], theta: f64| -> [f64; 3] {
         let cos_t = theta.cos();
         let sin_t = theta.sin();
@@ -63,7 +58,6 @@ pub fn shell_from_revolve(
         forward: false,
     };
 
-    // One face per profile edge
     for ei in 0..n_edges {
         let ej = if is_closed { (ei + 1) % n } else { ei + 1 };
         let p_i = &verts_2d[ei];
@@ -74,7 +68,6 @@ pub fn shell_from_revolve(
         let z_i = p_i[1];
         let z_j = p_j[1];
 
-        // Both endpoints on axis -> zero-area face, skip
         if r_i.abs() < 1e-10 && r_j.abs() < 1e-10 {
             continue;
         }
@@ -210,7 +203,6 @@ pub fn shell_from_revolve(
                 (None, None) => {}
             }
         } else {
-            // Partial rotation
             let vi_end = end_verts[ei];
             let vj_end = end_verts[ej];
 
@@ -319,7 +311,6 @@ pub fn shell_from_revolve(
         }
     }
 
-    // Cap faces for partial rotation
     if !full_rotation {
         add_cap_face(&mut shell, &start_verts, false);
         add_cap_face(&mut shell, &end_verts, true);
@@ -338,7 +329,6 @@ fn add_cap_face(shell: &mut Shell, vert_ids: &[usize], reverse: bool) {
         return;
     }
 
-    // Remove duplicates (on-axis vertices may coincide)
     let mut unique_ids: Vec<usize> = Vec::with_capacity(n);
     for &vid in vert_ids {
         if unique_ids.last().copied() != Some(vid) {
@@ -371,7 +361,6 @@ fn add_cap_face(shell: &mut Shell, vert_ids: &[usize], reverse: bool) {
         });
     }
 
-    // Normal from first 3 vertices
     let verts = &shell.vertices;
     let p0 = verts[unique_ids[order[0]]];
     let p1 = verts[unique_ids[order[1]]];
@@ -478,7 +467,6 @@ fn nurbs_surface_from_revolve_span(
         weights.push(row_wts);
     }
 
-    // v-direction knot vector: uniform segments with double knots at boundaries
     let mut knots_v = vec![0.0; 3];
     for seg in 1..n_segments {
         let knot = seg as f64 / n_segments as f64;
@@ -702,7 +690,6 @@ fn shell_from_revolve_nurbs(
     let mut shell = Shell::new();
     let axis_vec = axis.direction();
 
-    // Frame aligned with rotate_profile_point at theta=0
     let (frame_u, frame_v) = match axis {
         Axis::Y => ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
         Axis::X => ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
@@ -719,7 +706,6 @@ fn shell_from_revolve_nurbs(
         forward: false,
     };
 
-    // Vertices at theta=0
     let mut start_vids = Vec::with_capacity(n);
     for span in &spans {
         let p2 = &span.control_points[0];
@@ -727,7 +713,6 @@ fn shell_from_revolve_nurbs(
         start_vids.push(shell.add_vertex(pt));
     }
 
-    // Vertices at theta=angle
     let end_vids: Vec<usize> = if full_rotation {
         start_vids.clone()
     } else {
@@ -747,7 +732,6 @@ fn shell_from_revolve_nurbs(
     };
 
     if is_circular.is_some() {
-        // Circular profile: NurbsSurface per span
         for (i, span) in spans.iter().enumerate() {
             let j = (i + 1) % n;
             let r_i = span.control_points[0][0];
@@ -778,7 +762,6 @@ fn shell_from_revolve_nurbs(
             });
         }
     } else {
-        // Non-circular profile: merge contiguous non-degenerate spans
         let mut i = 0;
         while i < n {
             let span = &spans[i];
@@ -880,7 +863,6 @@ fn shell_from_revolve_nurbs(
                     loop_edges.push(rev(eid));
                 }
             } else {
-                // Profile edge at theta=0
                 let curve_start = Curve3D::Line {
                     start: shell.vertices[start_vids[first_j]],
                     end: shell.vertices[start_vids[last_j]],

@@ -1,7 +1,5 @@
-//! 2D Constrained Delaunay Triangulation (CDT).
-//!
-//! Bowyer-Watson incremental insertion + edge-flip constraint recovery.
-//! Uses crate-local adaptive predicates for exact orientation and in-circle evaluation.
+//! 2 次元の制約付き Delaunay 三角形分割を提供します。
+//! 適応精度の向きと内接円の述語で頂点挿入と制約辺の回復を行います。
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -9,35 +7,31 @@ use std::fmt;
 
 use crate::predicates::{incircle, orient2d};
 
-/// Sentinel for no adjacent triangle.
+/// 隣接する三角形がないことを表す値です。
 const NONE: usize = usize::MAX;
 
-/// 2D Constrained Delaunay Triangulation.
+/// 2 次元の制約付き Delaunay 三角形分割です。
 #[derive(Debug, Clone)]
 pub struct Cdt {
-    /// Vertex coordinates (first 3 are the super-triangle).
     vertices: Vec<[f64; 2]>,
-    /// Triangles (CCW vertex-index triples).
+    /// 反時計回りの頂点番号を持つ三角形です。
     triangles: Vec<[usize; 3]>,
-    /// Adjacent triangles. `adjacency[t][i]` = triangle adjacent to edge (v[(i+1)%3], v[(i+2)%3]).
     adjacency: Vec<[usize; 3]>,
-    /// Constraint edge set (normalized: (min, max)).
+    /// 両端の小さい順に正規化した制約辺です。
     constraints: HashSet<(usize, usize)>,
-    /// Number of super-triangle vertices (always 3).
     n_super: usize,
-    /// Start hint for walk-based point location.
     last_triangle: usize,
 }
 
-/// Errors produced by constrained edge recovery.
+/// 制約辺の回復で返すエラーです。
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CdtError {
-    /// Constraint edge recovery did not converge within the iteration budget.
+    /// 三角形数の 4 倍の試行内に制約辺を回復できなかったことを表します。
     ConstraintRecoveryDidNotConverge {
-        /// User-vertex indices of the failed edge.
+        /// 失敗した辺の利用者頂点番号です。
         edge: (usize, usize),
-        /// Maximum number of iterations attempted.
+        /// 試行回数の上限です。
         iterations: usize,
     },
 }
@@ -78,7 +72,6 @@ impl Cdt {
         let cx = (min_x + max_x) * 0.5;
         let cy = (min_y + max_y) * 0.5;
 
-        // Super-triangle: sufficiently large equilateral triangle
         let margin = 10.0 * d;
         let v0 = [cx - margin, cy - margin];
         let v1 = [cx + margin, cy - margin];
@@ -101,23 +94,15 @@ impl Cdt {
         let vi = self.vertices.len();
         self.vertices.push([x, y]);
 
-        // Find the triangle containing the point
         let ti = match self.locate(x, y) {
             Some(t) => t,
-            None => {
-                // Outside all triangles (beyond super-triangle) -- should not happen, fallback
-                // Use the nearest triangle
-                self.nearest_triangle(x, y)
-            }
+            None => self.nearest_triangle(x, y),
         };
 
-        // Bowyer-Watson: collect triangles whose circumcircle contains the point
         let bad = self.find_bad_triangles(vi, ti);
 
-        // Find boundary edges of bad triangles
         let boundary = self.find_boundary(&bad);
 
-        // Remove bad triangles and fill with new ones
         self.re_triangulate(vi, &bad, &boundary);
 
         vi
@@ -136,14 +121,11 @@ impl Cdt {
             return Ok(());
         }
 
-        // Reuse exact duplicate vertices so closed polylines and sampled curves
-        // do not create overlapping vertices that make constraint recovery fail.
         let indices: Vec<usize> = points
             .iter()
             .map(|p| self.find_or_insert_vertex(p[0], p[1]))
             .collect();
 
-        // Register and recover constraint edges
         let n = indices.len();
         for i in 0..n {
             let next = if i + 1 < n {
@@ -188,7 +170,6 @@ impl Cdt {
     pub fn triangles(&self) -> Vec<[usize; 3]> {
         let mut result = Vec::new();
         for tri in &self.triangles {
-            // Exclude triangles containing super-triangle vertices
             if tri[0] < self.n_super || tri[1] < self.n_super || tri[2] < self.n_super {
                 continue;
             }
@@ -205,8 +186,6 @@ impl Cdt {
     pub fn user_vertices(&self) -> &[[f64; 2]] {
         &self.vertices[self.n_super..]
     }
-
-    // ── Internal methods ──
 
     /// Find the triangle containing point (x, y) by adjacency walk.
     fn locate(&self, x: f64, y: f64) -> Option<usize> {

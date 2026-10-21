@@ -1,6 +1,4 @@
-//! Dormand-Prince 8(5,3) adaptive Runge-Kutta integrator.
-//!
-//! Butcher tableau coefficients follow the Hairer and Wanner DOP853 scheme.
+//! Dormand-Prince 8(5,3) の適応 Runge-Kutta 積分器です。
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 mod coefficients {
     pub const C: [f64; 16] = [
@@ -108,11 +106,13 @@ mod coefficients {
 
 use coefficients::*;
 
+/// 積分の許容差とステップ長を指定します。
 #[derive(Debug, Clone)]
 pub struct Dop853Options {
     pub rtol: f64,
     pub atol: f64,
     pub max_step: f64,
+    /// 正の値では初期ステップ長とし、上限を超える値は縮めます。
     pub initial_step: f64,
 }
 
@@ -127,6 +127,8 @@ impl Default for Dop853Options {
     }
 }
 
+/// 要求時刻の積分状態と実行統計です。
+/// `success` は全ての要求時刻を出力し、受理したステップ数が上限未満の場合に真です。刻み幅の下限による早期終了などで要求時刻が残る場合は偽です。
 #[derive(Debug, Clone)]
 pub struct Dop853Result {
     pub t: Vec<f64>,

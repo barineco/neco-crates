@@ -1,9 +1,5 @@
-//! Necosystems series finite field arithmetic for secp256k1 and P-256.
-//!
-//! Provides `U256`, `Fp<P>` Montgomery-form prime field, secp256k1 / P-256
-//! field and order constants, and RFC 6979 deterministic nonce generation.
+//! secp256k1 と P-256 の有限体演算、定数、決定論的なノンス生成を提供します。
 
-// `U256::add(a, b)` style associated functions are intentional, not trait impls.
 #![allow(clippy::should_implement_trait)]
 
 pub mod bigint;

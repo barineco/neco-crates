@@ -33,24 +33,18 @@ fn ecdsa_reject_high_s() {
     let digest = [0x77; 32];
     let signature = secret.sign_ecdsa_prehash(digest).expect("sign");
 
-    // s の high-s 相当 (n - s) を big-endian バイト演算で計算する
     let mut bytes = signature.to_bytes();
     let s_bytes: [u8; 32] = bytes[32..].try_into().unwrap();
 
-    // P-256 の群位数 n (big-endian)
     const N: [u8; 32] = [
         0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
         0xFF, 0xBC, 0xE6, 0xFA, 0xAD, 0xA7, 0x17, 0x9E, 0x84, 0xF3, 0xB9, 0xCA, 0xC2, 0xFC, 0x63,
         0x25, 0x51,
     ];
 
-    // high_s = n - s (バイトレベル減算)
     let high_s = be256_sub(N, s_bytes);
-
-    // half_n = n >> 1
     let half_n = be256_shr1(N);
 
-    // high_s > half_n の場合のみ拒否される
     if be256_gt(high_s, half_n) {
         bytes[32..].copy_from_slice(&high_s);
         let high_s_signature = EcdsaSignature::from_bytes(bytes);
@@ -87,9 +81,6 @@ fn hex_roundtrip() {
     );
 }
 
-// --- テスト用 256-bit 演算補助 ---
-
-/// big-endian 256-bit 減算: a - b
 fn be256_sub(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     let mut borrow: u16 = 0;
@@ -106,7 +97,6 @@ fn be256_sub(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
     out
 }
 
-/// big-endian 256-bit 右シフト 1 bit
 fn be256_shr1(a: [u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     let mut carry = 0u8;
@@ -117,7 +107,6 @@ fn be256_shr1(a: [u8; 32]) -> [u8; 32] {
     out
 }
 
-/// big-endian 256-bit 大小比較: a > b
 fn be256_gt(a: [u8; 32], b: [u8; 32]) -> bool {
     for i in 0..32 {
         if a[i] > b[i] {

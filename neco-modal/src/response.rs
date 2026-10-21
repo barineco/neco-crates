@@ -1,5 +1,10 @@
+#![doc = "減衰モードから時間領域の応答を合成します。振幅計算はモード形状の積を返します。"]
+#![doc = "入力のノード、成分、振幅列の長さ、時間、標本化周波数が不正な場合はエラーになります。"]
+#![doc = "周波数は Hz として扱い、応答はモード形状と各モードの重みから合成します。"]
+
 use crate::{DampedModalSet, ModalSet, ModalSetError};
 
+/// 遅延、利得、位相を持つ一点の励振です。
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceExcitation {
     node: usize,
@@ -9,6 +14,7 @@ pub struct SourceExcitation {
 }
 
 impl SourceExcitation {
+    /// 励振を作成します。遅延は 0 以上の有限値、利得と位相は有限値でなければエラーになります。
     pub fn new(node: usize, delay: f64, gain: f64, phase: f64) -> Result<Self, ModalSetError> {
         if !delay.is_finite() || delay < 0.0 {
             return Err(ModalSetError::InvalidExcitationDelay { delay });
@@ -27,18 +33,22 @@ impl SourceExcitation {
         })
     }
 
+    /// 励振するノード番号を返します。
     pub fn node(&self) -> usize {
         self.node
     }
 
+    /// 励振の遅延を秒で返します。
     pub fn delay(&self) -> f64 {
         self.delay
     }
 
+    /// 励振の利得を返します。
     pub fn gain(&self) -> f64 {
         self.gain
     }
 
+    /// 励振の位相をラジアンで返します。
     pub fn phase(&self) -> f64 {
         self.phase
     }

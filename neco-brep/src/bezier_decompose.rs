@@ -1,15 +1,13 @@
-//! Decompose a NURBS tensor-product surface into Bezier patches.
-
 use neco_nurbs::NurbsSurface3D;
 
-/// Rational tensor-product Bezier patch.
+/// 有理テンソル積 Bézier パッチです。
 #[derive(Clone, Debug)]
 pub struct BezierPatch {
     pub degree_u: usize,
     pub degree_v: usize,
-    /// Control point grid \[degree_u+1\]\[degree_v+1\].
+    /// `(degree_u + 1) × (degree_v + 1)` の制御点格子です。
     pub control_points: Vec<Vec<[f64; 3]>>,
-    /// Weight grid \[degree_u+1\]\[degree_v+1\].
+    /// 制御点格子と同じ形の重み格子です。
     pub weights: Vec<Vec<f64>>,
     pub u_min: f64,
     pub u_max: f64,
@@ -18,7 +16,7 @@ pub struct BezierPatch {
 }
 
 impl BezierPatch {
-    /// Evaluate a point on the patch by converting to NurbsSurface3D internally.
+    /// 媒介変数 `u` と `v` からパッチ上の点を評価します。
     pub fn evaluate(&self, u: f64, v: f64) -> [f64; 3] {
         let p = self.degree_u;
         let q = self.degree_v;
@@ -38,7 +36,7 @@ impl BezierPatch {
         surf.evaluate(u, v)
     }
 
-    /// Compute the axis-aligned bounding box from control points.
+    /// 制御点全体の軸平行外接箱を返します。
     pub fn aabb(&self) -> ([f64; 3], [f64; 3]) {
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
@@ -70,7 +68,6 @@ impl BezierPatch {
     }
 }
 
-/// Collect internal knots and their multiplicities from a knot vector.
 fn collect_internal_knots(knots: &[f64], degree: usize, n_cp: usize) -> Vec<(f64, usize)> {
     let t_min = knots[degree];
     let t_max = knots[n_cp];
@@ -95,16 +92,13 @@ fn collect_internal_knots(knots: &[f64], degree: usize, n_cp: usize) -> Vec<(f64
     result
 }
 
-/// Decompose a `NurbsSurface3D` into tensor-product Bezier patches.
-///
-/// Raises internal knot multiplicities to full degree in both u and v,
-/// then extracts (degree+1) x (degree+1) control point blocks.
+/// 内部 knot の重複度を各方向の次数まで上げて Bézier パッチへ分解します。
+/// 零スパンの場合は一つのパッチを返します。
 pub fn decompose_to_bezier_patches(surface: &NurbsSurface3D) -> Vec<BezierPatch> {
     let p = surface.degree_u;
     let q = surface.degree_v;
     let mut surf = surface.clone();
 
-    // Raise u-direction internal knot multiplicities to degree_u
     let internal_u = collect_internal_knots(&surf.knots_u, p, surf.control_points.len());
     for (t, mult) in &internal_u {
         let insertions_needed = p - mult;
@@ -113,7 +107,6 @@ pub fn decompose_to_bezier_patches(surface: &NurbsSurface3D) -> Vec<BezierPatch>
         }
     }
 
-    // Raise v-direction internal knot multiplicities to degree_v
     let internal_v = collect_internal_knots(&surf.knots_v, q, surf.control_points[0].len());
     for (t, mult) in &internal_v {
         let insertions_needed = q - mult;
@@ -122,13 +115,11 @@ pub fn decompose_to_bezier_patches(surface: &NurbsSurface3D) -> Vec<BezierPatch>
         }
     }
 
-    // Split into Bezier patches
     let n_u = surf.control_points.len();
     let n_v = surf.control_points[0].len();
     let num_spans_u = (n_u - 1) / p;
     let num_spans_v = (n_v - 1) / q;
 
-    // Zero spans: return the original surface as a single patch
     if num_spans_u == 0 || num_spans_v == 0 {
         return vec![BezierPatch {
             degree_u: p,
@@ -165,7 +156,6 @@ pub fn decompose_to_bezier_patches(surface: &NurbsSurface3D) -> Vec<BezierPatch>
             let v_min = surf.knots_v[v_start_cp + q];
             let v_max = surf.knots_v[v_end_cp];
 
-            // Extract control point block
             let mut cp_block = Vec::with_capacity(p + 1);
             let mut w_block = Vec::with_capacity(p + 1);
             for i in u_start_cp..u_end_cp {

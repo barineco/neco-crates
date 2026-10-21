@@ -1,4 +1,4 @@
-// HMAC-SHA256 per RFC 2104
+//! RFC 2104 に基づく HMAC-SHA256。
 
 use crate::sha256::Sha256;
 
@@ -10,8 +10,8 @@ pub struct Hmac {
 }
 
 impl Hmac {
+    /// 鍵から HMAC-SHA256 の状態を作る。64 バイトを超える鍵は SHA-256 ダイジェストへ変換する。
     pub fn new(key: &[u8]) -> Self {
-        // Keys longer than block size are hashed down
         let mut k = [0u8; BLOCK_SIZE];
         if key.len() > BLOCK_SIZE {
             let hk = Sha256::digest(key);
@@ -36,11 +36,13 @@ impl Hmac {
         }
     }
 
+    /// データを追加し、この HMAC 状態への可変参照を返す。
     pub fn update(&mut self, data: &[u8]) -> &mut Self {
         self.inner.update(data);
         self
     }
 
+    /// 状態を消費して 32 バイトの認証コードを返す。
     pub fn finalize(self) -> [u8; 32] {
         let inner_hash = self.inner.finalize();
         let mut outer = Sha256::new();
@@ -49,6 +51,7 @@ impl Hmac {
         outer.finalize()
     }
 
+    /// 鍵とデータから 32 バイトの HMAC-SHA256 認証コードを計算する。
     pub fn mac(key: &[u8], data: &[u8]) -> [u8; 32] {
         let mut h = Self::new(key);
         h.update(data);
@@ -64,11 +67,8 @@ mod tests {
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 
-    // RFC 4231 Test Cases
-
     #[test]
     fn rfc4231_tc1() {
-        // Key = 20 bytes of 0x0b, Data = "Hi There"
         let key = [0x0bu8; 20];
         let data = b"Hi There";
         assert_eq!(
@@ -79,7 +79,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc2() {
-        // Key = "Jefe", Data = "what do ya want for nothing?"
         assert_eq!(
             hex(&Hmac::mac(b"Jefe", b"what do ya want for nothing?")),
             "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
@@ -88,7 +87,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc3() {
-        // Key = 20 bytes of 0xaa, Data = 50 bytes of 0xdd
         let key = [0xaau8; 20];
         let data = [0xddu8; 50];
         assert_eq!(
@@ -99,7 +97,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc4() {
-        // Key = 25 bytes 0x01..0x19, Data = 50 bytes of 0xcd
         let key: Vec<u8> = (0x01..=0x19u8).collect();
         let data = [0xcdu8; 50];
         assert_eq!(
@@ -110,8 +107,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc5() {
-        // Key = 20 bytes of 0x0c, Data = "Test With Truncation"
-        // (RFC 4231 specifies only first 128 bits; we verify full 256-bit output here)
         let key = [0x0cu8; 20];
         let data = b"Test With Truncation";
         assert_eq!(
@@ -122,7 +117,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc6() {
-        // Key = 131 bytes of 0xaa (longer than block size), Data = "Test Using Larger Than Block-Size Key - Hash Key First"
         let key = [0xaau8; 131];
         let data = b"Test Using Larger Than Block-Size Key - Hash Key First";
         assert_eq!(
@@ -133,7 +127,6 @@ mod tests {
 
     #[test]
     fn rfc4231_tc7() {
-        // Key = 131 bytes of 0xaa, Data = "This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm."
         let key = [0xaau8; 131];
         let data = b"This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm.";
         assert_eq!(

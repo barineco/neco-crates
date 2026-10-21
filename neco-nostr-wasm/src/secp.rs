@@ -148,11 +148,6 @@ mod tests {
 
     #[test]
     fn finalize_event_matches_core_output() {
-        // wasm binding は BIP-340 推奨のランダム aux_rand を使う通常経路で動作するため、
-        // sig のバイト列は呼び出しごとに異なる。よって wasm 経路と core 経路の等価性は
-        // 「id/pubkey/created_at/kind/tags/content が一致し、かつ両方とも verify OK」
-        // という意味不変量で検証する。決定モードそのものの再現性は neco-secp 側の
-        // finalize_event_deterministic_is_reproducible テストで担保している。
         let secret = SecretKey::from_bytes([0x11; 32]).expect("secret");
         let unsigned = UnsignedEvent {
             created_at: 1_700_000_000,

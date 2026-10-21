@@ -4,7 +4,7 @@ use neco_json::JsonValue;
 
 use crate::error::ArgParseError;
 
-/// パース・バリデーション済みのコマンド引数
+/// 解析と検証を終えたコマンド引数です。
 #[derive(Debug)]
 pub struct ParsedArgs {
     pub(crate) inner: HashMap<String, JsonValue>,
@@ -12,8 +12,6 @@ pub struct ParsedArgs {
 }
 
 impl ParsedArgs {
-    // --- required アクセサ ---
-
     pub fn get_u32(&self, name: &str) -> Result<u32, ArgParseError> {
         let v = self
             .inner
@@ -52,8 +50,6 @@ impl ParsedArgs {
         })
     }
 
-    // --- optional アクセサ ---
-
     pub fn get_opt_u32(&self, name: &str) -> Option<u32> {
         self.inner
             .get(name)
@@ -88,7 +84,6 @@ impl ParsedArgs {
         &self.positional
     }
 
-    /// inner を JsonValue::Object に再構築する（デバッグ・シリアライズ用）
     pub fn to_json_value(&self) -> JsonValue {
         let mut fields: Vec<(String, JsonValue)> = self
             .inner
@@ -105,8 +100,6 @@ impl ParsedArgs {
         JsonValue::Object(fields)
     }
 }
-
-// --- 型変換ヘルパー ---
 
 pub(crate) fn value_to_u32(v: &JsonValue, name: &str) -> Result<u32, ArgParseError> {
     if let Some(n) = v.as_f64() {

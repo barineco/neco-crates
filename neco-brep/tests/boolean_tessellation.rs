@@ -645,8 +645,6 @@ fn box_sphere_union_tessellates_with_positive_volume() {
         .unwrap_or_else(|e| panic!("union_box_sphere_offset: tessellate failed: {e}"));
     let v = mesh.validate();
     assert_mesh_pipeline_survives("union_box_sphere_offset", &mesh, &v);
-    // Trim-aware tessellation fixes curved face leakage, but this mixed plane/sphere union
-    // still leaves disconnected components, so stronger volume bounds stay deferred.
 }
 
 #[test]

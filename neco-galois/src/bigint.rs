@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-/// 256-bit unsigned integer. Little-endian 4 × u64 limb representation.
+/// リトルエンディアン順の 4 個の `u64` で表す 256 ビット符号なし整数です。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct U256 {
     pub l0: u64,
@@ -36,7 +36,7 @@ impl U256 {
         }
     }
 
-    /// big-endian バイト列からの変換
+    /// ビッグエンディアン順の 32 バイトから変換します。
     pub fn from_be_bytes(b: [u8; 32]) -> U256 {
         let l3 = u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
         let l2 = u64::from_be_bytes([b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]]);
@@ -100,10 +100,8 @@ impl U256 {
         (U256 { l0, l1, l2, l3 }, b3a | b3b)
     }
 
-    /// 512-bit schoolbook multiplication. Returns `[u64; 8]` little-endian limbs.
+    /// 512 ビットの積をリトルエンディアン順の 8 個の `u64` として返します。各部分積と桁上がりは `u128` に収まり、最上位 limb の加算は 512 ビット積の範囲を超えません。
     pub fn mul_wide(a: U256, b: U256) -> [u64; 8] {
-        // Row-by-row 乗算。各行の carry を次の列に伝播する。
-        // r[i+j] += a[i] * b[j] の順で処理し、溢れを carry として伝播。
         let mut r = [0u64; 8];
         let la = [a.l0, a.l1, a.l2, a.l3];
         let lb = [b.l0, b.l1, b.l2, b.l3];
@@ -112,17 +110,12 @@ impl U256 {
             let mut carry: u64 = 0;
             for (j, &lbj) in lb.iter().enumerate() {
                 let pos = i + j;
-                // r[pos] + la[i]*lb[j] + carry は最大:
-                // (2^64-1) + (2^64-1)^2 + (2^64-1) = 2^128 - 1 (u128 に収まる)
                 let cur = (r[pos] as u128) + (la[i] as u128) * (lbj as u128) + (carry as u128);
                 r[pos] = cur as u64;
                 carry = (cur >> 64) as u64;
             }
-            // carry を r[i+4] に加算（前の行の carry と合算）
             let (new_r, oc) = r[i + 4].overflowing_add(carry);
             r[i + 4] = new_r;
-            // i+4 の溢れは発生しないはず (積全体は 512-bit)
-            // ただし安全のため assert は入れない (const の問題)
             let _ = oc;
         }
 
@@ -190,15 +183,9 @@ impl U256 {
     }
 }
 
-// -----------------------------------------------------------------------
-// Tests
-// -----------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- round-trip tests (10本) ---
 
     #[test]
     fn rt_zero_be() {
@@ -244,14 +231,12 @@ mod tests {
 
     #[test]
     fn rt_known_be_le_consistency() {
-        // BE と LE の一貫性
         let mut be = [0u8; 32];
         be[0] = 0xDE;
         be[1] = 0xAD;
         be[30] = 0xBE;
         be[31] = 0xEF;
         let from_be = U256::from_be_bytes(be);
-        // BE→LE バイト列は逆順
         let le = from_be.to_le_bytes();
         let from_le = U256::from_le_bytes(le);
         assert_eq!(from_be, from_le);
@@ -282,7 +267,6 @@ mod tests {
 
     #[test]
     fn rt_limb_order_be() {
-        // l3 が MSB side に来る
         let u = U256 {
             l0: 0,
             l1: 0,
@@ -292,8 +276,6 @@ mod tests {
         let be = u.to_be_bytes();
         assert_eq!(&be[0..8], &[0, 0, 0, 0, 0, 0, 0, 1]);
     }
-
-    // --- 加減算 carry/borrow 境界値 (8本) ---
 
     #[test]
     fn add_no_carry() {
@@ -387,7 +369,6 @@ mod tests {
     fn sub_underflow() {
         let (r, borrow) = U256::sub(U256::ZERO, U256::ONE);
         assert!(borrow);
-        // 2^256 - 1
         assert_eq!(
             r,
             U256 {
@@ -411,8 +392,6 @@ mod tests {
         assert_eq!(r, U256::ZERO);
         assert!(!borrow);
     }
-
-    // --- 乗算既知ベクタ (5本) ---
 
     #[test]
     fn mul_wide_zero() {
@@ -445,7 +424,6 @@ mod tests {
 
     #[test]
     fn mul_wide_l0_full() {
-        // u64::MAX * u64::MAX = (2^64-1)^2 = 2^128 - 2^65 + 1
         let a = U256 {
             l0: u64::MAX,
             l1: 0,
@@ -459,7 +437,6 @@ mod tests {
             l3: 0,
         };
         let t = U256::mul_wide(a, b);
-        // (2^64-1)^2 = 0xFFFFFFFFFFFFFFFE_0000000000000001
         assert_eq!(t[0], 1u64);
         assert_eq!(t[1], u64::MAX - 1);
         assert_eq!(&t[2..], &[0u64; 6]);
@@ -467,7 +444,6 @@ mod tests {
 
     #[test]
     fn mul_wide_multidigit() {
-        // 2^64 * 2^64 = 2^128
         let a = U256 {
             l0: 0,
             l1: 1,
@@ -481,14 +457,11 @@ mod tests {
             l3: 0,
         };
         let t = U256::mul_wide(a, b);
-        // 2^128 → limb index 2
         assert_eq!(t[2], 1);
         assert_eq!(t[0], 0);
         assert_eq!(t[1], 0);
         assert_eq!(&t[3..], &[0u64; 5]);
     }
-
-    // --- cmp tests ---
 
     #[test]
     fn cmp_equal() {

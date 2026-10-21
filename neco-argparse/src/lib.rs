@@ -1,8 +1,9 @@
-//! CLI argument parser and validator backed by neco-json.
-//!
-//! Provides [ArgDef], [ArgType], [CommandMeta] for defining command schemas,
-//! [parse_and_validate] for validating [JsonValue] parameters against those schemas,
-//! and [parse_cli_args] for converting raw CLI arguments into validated [JsonValue].
+#![doc = "neco-json を利用する CLI 引数パーサーおよびバリデーターです。"]
+#![doc = "[ArgDef] はコマンド引数を定義します。"]
+#![doc = "[ArgType] は引数の型を表します。"]
+#![doc = "[CommandMeta] はコマンドスキーマを表します。"]
+#![doc = "[parse_and_validate] は JSON 値を検証します。"]
+#![doc = "[parse_cli_args] は生の CLI 引数を検証済みの JSON 値に変換します。"]
 
 mod args;
 mod cli;

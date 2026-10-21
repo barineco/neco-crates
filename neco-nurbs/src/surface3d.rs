@@ -1,4 +1,4 @@
-//! NURBS tensor-product surface evaluation and differentiation.
+//! NURBS テンソル積曲面の評価と微分を提供します。
 
 use crate::deboor::{
     deboor_1d_control_points_3d, deboor_1d_homogeneous_3d, find_knot_span, knot_insert_1d_3d,
@@ -6,18 +6,20 @@ use crate::deboor::{
 
 const MAX_CONTROL_ROWS_STACK: usize = 64;
 
-/// A rational NURBS tensor-product surface.
+/// 有理 NURBS テンソル積曲面です。
 #[derive(Clone, Debug)]
 pub struct NurbsSurface3D {
+    /// u 方向の次数です。
     pub degree_u: usize,
+    /// v 方向の次数です。
     pub degree_v: usize,
-    /// Control point grid [n_u][n_v].
+    /// u 方向の行数と v 方向の列数からなる制御点格子です。
     pub control_points: Vec<Vec<[f64; 3]>>,
-    /// Weight grid [n_u][n_v].
+    /// 制御点格子と同じ行数および列数を持つ重み格子です。
     pub weights: Vec<Vec<f64>>,
-    /// U-direction knot vector (length = n_u + degree_u + 1).
+    /// u 方向のノット列です。長さは u 方向の行数に次数と 1 を加えた値です。
     pub knots_u: Vec<f64>,
-    /// V-direction knot vector (length = n_v + degree_v + 1).
+    /// v 方向のノット列です。長さは v 方向の列数に次数と 1 を加えた値です。
     pub knots_v: Vec<f64>,
 }
 

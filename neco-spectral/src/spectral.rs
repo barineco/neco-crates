@@ -1,19 +1,34 @@
 use core::fmt;
-use neco_eigensolve::{EigensolveConfig, EigensolveResult};
-use neco_eigensolve_faer::{solve_symmetric_f64, EigensolveFaerError};
+use std::sync::Arc;
+
+use neco_eigensolve::{EigensolveConfig, EigensolveRequest, EigensolveResult};
+use neco_eigensolve_faer::{solve_request_symmetric_f64, EigensolveFaerError};
+use neco_expr::ProjectionPolicy;
 use neco_generalized_eigen::{ConvergenceStatus, GeneralizedEigenError, GeneralizedEigenProblem};
 use neco_kmeans::KmeansError;
+use neco_linear_dense::DenseMatrix;
+use neco_linear_exact::{
+    project_matrix_f64, CertifiedF64Scalar, CertifiedLinearProjectionError,
+    CertifiedMatrixProjection, ExactMatrix,
+};
 use neco_linear_types::LinearError;
 use neco_sparse::{CooMatrix, CsrMatrix};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum SpectralError {
     InvalidAdjacency { reason: &'static str },
     InvalidClusterCount { requested: usize, nodes: usize },
+    Projection(CertifiedLinearProjectionError),
     Linear(LinearError),
     GeneralizedEigen(GeneralizedEigenError),
     Eigensolve(EigensolveFaerError),
     Kmeans(KmeansError),
+}
+
+impl From<CertifiedLinearProjectionError> for SpectralError {
+    fn from(error: CertifiedLinearProjectionError) -> Self {
+        Self::Projection(error)
+    }
 }
 
 impl From<LinearError> for SpectralError {
@@ -52,6 +67,7 @@ impl fmt::Display for SpectralError {
                     "cluster count {requested} is outside 1..={nodes}"
                 )
             }
+            Self::Projection(error) => error.fmt(formatter),
             Self::Linear(error) => error.fmt(formatter),
             Self::GeneralizedEigen(error) => error.fmt(formatter),
             Self::Eigensolve(error) => error.fmt(formatter),
@@ -62,16 +78,129 @@ impl fmt::Display for SpectralError {
 
 impl std::error::Error for SpectralError {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SpectralInputIdentity(u64);
+
+impl SpectralInputIdentity {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SpectralInputRevision(u64);
+
+impl SpectralInputRevision {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpectralProjectionPurpose {
+    ClusteringAdjacency,
+}
+
+#[derive(Debug)]
+pub struct SpectralProjectionReference {
+    input_identity: SpectralInputIdentity,
+    input_revision: SpectralInputRevision,
+    purpose: SpectralProjectionPurpose,
+    projection: CertifiedMatrixProjection,
+}
+
+impl SpectralProjectionReference {
+    pub fn input_identity(&self) -> SpectralInputIdentity {
+        self.input_identity
+    }
+
+    pub fn input_revision(&self) -> SpectralInputRevision {
+        self.input_revision
+    }
+
+    pub fn purpose(&self) -> SpectralProjectionPurpose {
+        self.purpose
+    }
+
+    pub fn projection(&self) -> &CertifiedMatrixProjection {
+        &self.projection
+    }
+}
+
+#[derive(Debug)]
+pub struct ExactSpectralRequest<T> {
+    adjacency: ExactMatrix<T>,
+    input_identity: SpectralInputIdentity,
+    input_revision: SpectralInputRevision,
+    projection_policy: ProjectionPolicy,
+    cluster_count: usize,
+    eigensolve_config: EigensolveConfig,
+    max_kmeans_iterations: usize,
+}
+
+impl<T> ExactSpectralRequest<T> {
+    pub fn new(
+        adjacency: ExactMatrix<T>,
+        input_identity: SpectralInputIdentity,
+        input_revision: SpectralInputRevision,
+        projection_policy: ProjectionPolicy,
+        cluster_count: usize,
+        eigensolve_config: EigensolveConfig,
+        max_kmeans_iterations: usize,
+    ) -> Self {
+        Self {
+            adjacency,
+            input_identity,
+            input_revision,
+            projection_policy,
+            cluster_count,
+            eigensolve_config,
+            max_kmeans_iterations,
+        }
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        ExactMatrix<T>,
+        SpectralInputIdentity,
+        SpectralInputRevision,
+        ProjectionPolicy,
+        usize,
+        EigensolveConfig,
+        usize,
+    ) {
+        (
+            self.adjacency,
+            self.input_identity,
+            self.input_revision,
+            self.projection_policy,
+            self.cluster_count,
+            self.eigensolve_config,
+            self.max_kmeans_iterations,
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct SpectralResult {
+pub struct SpectralResult<R = ()> {
     assignments: Vec<u32>,
     cluster_count: usize,
     embedding: Vec<Vec<f64>>,
     convergence: ConvergenceStatus,
     kmeans_iterations: usize,
+    projection_reference: R,
 }
 
-impl SpectralResult {
+impl<R> SpectralResult<R> {
     pub fn assignments(&self) -> &[u32] {
         &self.assignments
     }
@@ -91,6 +220,10 @@ impl SpectralResult {
     pub fn kmeans_iterations(&self) -> usize {
         self.kmeans_iterations
     }
+
+    pub fn projection_reference(&self) -> &R {
+        &self.projection_reference
+    }
 }
 
 pub fn spectral_cluster(
@@ -99,6 +232,51 @@ pub fn spectral_cluster(
     eigensolve_config: EigensolveConfig,
     max_kmeans_iterations: usize,
 ) -> Result<SpectralResult, SpectralError> {
+    spectral_cluster_with_reference(
+        adjacency,
+        cluster_count,
+        eigensolve_config,
+        max_kmeans_iterations,
+        (),
+    )
+}
+
+pub fn spectral_cluster_exact<T: CertifiedF64Scalar>(
+    request: ExactSpectralRequest<T>,
+) -> Result<SpectralResult<Arc<SpectralProjectionReference>>, SpectralError> {
+    let (
+        adjacency,
+        input_identity,
+        input_revision,
+        projection_policy,
+        cluster_count,
+        eigensolve_config,
+        max_kmeans_iterations,
+    ) = request.into_parts();
+    let projection = project_matrix_f64(&adjacency, projection_policy)?;
+    let projection_reference = Arc::new(SpectralProjectionReference {
+        input_identity,
+        input_revision,
+        purpose: SpectralProjectionPurpose::ClusteringAdjacency,
+        projection,
+    });
+    let numerical_adjacency = csr_from_dense(projection_reference.projection().matrix())?;
+    spectral_cluster_with_reference(
+        &numerical_adjacency,
+        cluster_count,
+        eigensolve_config,
+        max_kmeans_iterations,
+        projection_reference,
+    )
+}
+
+fn spectral_cluster_with_reference<R>(
+    adjacency: &CsrMatrix<f64>,
+    cluster_count: usize,
+    eigensolve_config: EigensolveConfig,
+    max_kmeans_iterations: usize,
+    projection_reference: R,
+) -> Result<SpectralResult<R>, SpectralError> {
     let (laplacian, mass) = build_laplacian(adjacency)?;
     let nodes = adjacency.shape().rows();
     if cluster_count == 0 || cluster_count > nodes {
@@ -114,7 +292,11 @@ pub fn spectral_cluster(
     }
 
     let problem = GeneralizedEigenProblem::from_csr(&laplacian, &mass)?;
-    let eigensolve_result = solve_symmetric_f64(&problem, eigensolve_config)?;
+    let eigensolve_result = solve_request_symmetric_f64(EigensolveRequest::new(
+        problem,
+        eigensolve_config,
+        projection_reference,
+    ))?;
     let embedding = embedding_from_result(nodes, &eigensolve_result)?;
     let dimension = embedding.first().map_or(0, Vec::len);
     if dimension == 0 {
@@ -134,7 +316,21 @@ pub fn spectral_cluster(
         embedding,
         convergence: eigensolve_result.convergence(),
         kmeans_iterations: kmeans.iterations,
+        projection_reference: eigensolve_result.into_projection_reference(),
     })
+}
+
+fn csr_from_dense(matrix: &DenseMatrix<f64>) -> Result<CsrMatrix<f64>, SpectralError> {
+    let shape = matrix.shape();
+    let mut entries = CooMatrix::new(shape);
+    for row in 0..shape.rows() {
+        let row_index = shape.row_index(row)?;
+        for column in 0..shape.columns() {
+            let value = *matrix.value(row_index, shape.column_index(column)?)?;
+            entries.push(row_index, shape.column_index(column)?, value)?;
+        }
+    }
+    Ok(entries.to_csr()?)
 }
 
 fn build_laplacian(
@@ -207,9 +403,9 @@ fn build_laplacian(
     Ok((laplacian.to_csr()?, mass.to_csr()?))
 }
 
-fn embedding_from_result(
+fn embedding_from_result<R>(
     nodes: usize,
-    eigensolve_result: &EigensolveResult,
+    eigensolve_result: &EigensolveResult<R>,
 ) -> Result<Vec<Vec<f64>>, SpectralError> {
     let dimensions: usize = eigensolve_result
         .eigenspaces()
@@ -237,10 +433,18 @@ fn embedding_from_result(
 
 #[cfg(test)]
 mod tests {
-    use super::{spectral_cluster, SpectralError};
+    use super::{
+        spectral_cluster, spectral_cluster_exact, spectral_cluster_with_reference,
+        ExactSpectralRequest, SpectralError, SpectralInputIdentity, SpectralInputRevision,
+        SpectralProjectionPurpose,
+    };
     use neco_eigensolve::EigensolveConfig;
+    use neco_expr::{AbsoluteBits, ProjectionPolicy};
+    use neco_formsum::FormSum;
+    use neco_linear_exact::ExactMatrix;
     use neco_linear_types::Shape;
     use neco_sparse::{CooMatrix, CsrMatrix};
+    use std::sync::Arc;
 
     fn config(cluster_count: usize) -> EigensolveConfig {
         EigensolveConfig::new(cluster_count, 1.0e-9, 1.0e-9, 64).expect("configuration")
@@ -266,6 +470,59 @@ mod tests {
                 .expect("entry");
         }
         matrix.to_csr().expect("CSR")
+    }
+
+    fn exact_adjacency(values: &[i32]) -> ExactMatrix<FormSum> {
+        ExactMatrix::from_row_major(
+            Shape::new(2, 2),
+            values
+                .iter()
+                .map(|value| match value {
+                    0 => FormSum::zero(),
+                    1 => FormSum::one().expect("one"),
+                    _ => panic!("test input is a binary adjacency matrix"),
+                })
+                .collect(),
+        )
+        .expect("matrix")
+    }
+
+    #[test]
+    fn exact_request_preserves_its_single_projection_reference() {
+        let request = ExactSpectralRequest::new(
+            exact_adjacency(&[0, 1, 1, 0]),
+            SpectralInputIdentity::new(42),
+            SpectralInputRevision::new(7),
+            ProjectionPolicy::new(AbsoluteBits::new(20)),
+            1,
+            config(1),
+            32,
+        );
+        let result = spectral_cluster_exact(request).expect("clustering");
+        let reference = result.projection_reference();
+
+        assert_eq!(reference.input_identity(), SpectralInputIdentity::new(42));
+        assert_eq!(reference.input_revision(), SpectralInputRevision::new(7));
+        assert_eq!(
+            reference.purpose(),
+            SpectralProjectionPurpose::ClusteringAdjacency
+        );
+        assert_eq!(reference.projection().certificates_row_major().len(), 4);
+    }
+
+    #[test]
+    fn solver_and_result_hold_the_same_projection_reference() {
+        let reference = Arc::new("projection reference");
+        let result = spectral_cluster_with_reference(
+            &adjacency(2, &[(0, 1, 1.0)]),
+            1,
+            config(1),
+            32,
+            reference.clone(),
+        )
+        .expect("clustering");
+
+        assert!(Arc::ptr_eq(&reference, result.projection_reference()));
     }
 
     #[test]

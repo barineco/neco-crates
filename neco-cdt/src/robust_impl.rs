@@ -8,27 +8,10 @@
 // except according to those terms.
 #![allow(non_snake_case)]
 
-//! # Adaptive Precision Floating-Point Arithmetic and Fast Robust Predicates for Computational Geometry
-//! This is a direct transcript of the source code and algorithms provided by
-//! Jonathan Richard Shewchuk ([https://www.cs.cmu.edu/~quake/robust.html](https://www.cs.cmu.edu/~quake/robust.html))
-//! See the paper and the source code for more information.
-//!
-//! The module offers adaptive and precise calculations for orientation queries
-//! – "on which side of a line (2d) or plane (3d) does a point lie?" – and in-circle / in-sphere queries
-//! – "is a given point contained in the circumference of a triangle?".  
-//! The "adaptive" nature will increase performance only if a simpler calculation
-//! cannot be guaranteed to be accurate enough, yielding higher performance on
-//! average.
-//!
-//! The public API will accept both `f32` and `f64` input points for predicate checking, with input being converted to
-//! `f64` values for internal use.
-//! This has no effect on precision, as the [IEEE-754 standard](https://drive.google.com/file/d/0B3O3Ys97VjtxYXBCY08wanNoZ1U/view) (section 5.3)
-//! guarantees that conversion from `f32` to `f64` must be exact.
-//!
-//! # Features
-//! - `no_std`: Build without the Rust standard library
+//! Shewchuk の適応精度述語に基づく幾何学的な判定です。
+//! 入力座標は倍精度浮動小数点数へ変換します。
 
-/// A two dimensional coordinate.
+/// 2 次元座標です。
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Coord<T: Into<f64>> {
     pub x: T,
@@ -43,8 +26,6 @@ pub struct Coord3D<T: Into<f64>> {
     pub z: T,
 }
 
-// These values are precomputed from the "exactinit" method of the c-source code. They should? be
-// the same in all IEEE-754 environments, including rust f64
 const SPLITTER: f64 = 134_217_729f64;
 const EPSILON: f64 = 0.000_000_000_000_000_111_022_302_462_515_65;
 const RESULTERRBOUND: f64 = (3.0 + 8.0 * EPSILON) * EPSILON;
@@ -87,11 +68,6 @@ pub fn orient2d<T: Into<f64>>(pa: Coord<T>, pb: Coord<T>, pc: Coord<T>) -> f64 {
     let detright = (pa.y - pc.y) * (pb.x - pc.x);
     let det = detleft - detright;
 
-    // The errbound calculation was changed to require only one branch on the likely execution path.
-    // This improves performance on modern processors as discussed by Ozaki et al in
-    // https://doi.org/10.1007/s10543-015-0574-9
-    // The underflow guard "+ u_N" was omitted because orient2dadapt(...) would not guarantee
-    // correct results in cases of underflow, the derivation of THETA is given in the reference.
     let detsum = abs(detleft + detright);
     const THETA: f64 = 3.3306690621773722e-16;
     let errbound = THETA * detsum;

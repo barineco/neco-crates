@@ -7,15 +7,12 @@ static D50_TRANSFORM: OnceLock<RgbTransform> = OnceLock::new();
 static A_TRANSFORM: OnceLock<RgbTransform> = OnceLock::new();
 static E_TRANSFORM: OnceLock<RgbTransform> = OnceLock::new();
 
-/// Precomputed spectral-to-linear-RGB transform matrix for a given illuminant.
-///
-/// 3 x N_SPECTRAL row-major matrix: [R_row, G_row, B_row].
+/// 指定した光源で反射率スペクトルを線形 sRGB へ変換する行列です。
 #[derive(Clone)]
 pub struct RgbTransform {
     pub(crate) a_rgb: [f32; 3 * N_SPECTRAL],
 }
 
-// Manual serde impl: derive not available for [f32; N] where N > 32.
 #[cfg(feature = "serde")]
 impl serde::Serialize for RgbTransform {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -34,7 +31,7 @@ impl<'de> serde::Deserialize<'de> for RgbTransform {
     }
 }
 
-/// XYZ to linear sRGB matrix (D65 white point, IEC 61966-2-1).
+/// D65 白色点における IEC 61966-2-1 の XYZ から線形 sRGB への変換行列です。
 const XYZ_TO_SRGB: [[f64; 3]; 3] = [
     [
         3.2404541621141054,
@@ -53,16 +50,14 @@ const XYZ_TO_SRGB: [[f64; 3]; 3] = [
     ],
 ];
 
-/// Build the 3 x N_SPECTRAL RGB transform matrix from CMF and illuminant SPD.
+/// 輝度を 1 に正規化した変換行列を構築します。
 fn build_transform(illuminant_spd: &[f32; N_SPECTRAL]) -> RgbTransform {
-    // Y normalization: k = 1 / sum(y_bar * S)
     let mut sum_y_s = 0.0f64;
     for i in 0..N_SPECTRAL {
         sum_y_s += CMF_Y[i] as f64 * illuminant_spd[i] as f64;
     }
     let k = 1.0 / sum_y_s;
 
-    // Per-wavelength XYZ contribution, then XYZ-to-RGB transform
     let mut a_rgb = [0.0f32; 3 * N_SPECTRAL];
     for i in 0..N_SPECTRAL {
         let s = illuminant_spd[i] as f64;
@@ -70,7 +65,6 @@ fn build_transform(illuminant_spd: &[f32; N_SPECTRAL]) -> RgbTransform {
         let y = CMF_Y[i] as f64 * s * k;
         let z = CMF_Z[i] as f64 * s * k;
 
-        // XYZ to linear sRGB
         let r = XYZ_TO_SRGB[0][0] * x + XYZ_TO_SRGB[0][1] * y + XYZ_TO_SRGB[0][2] * z;
         let g = XYZ_TO_SRGB[1][0] * x + XYZ_TO_SRGB[1][1] * y + XYZ_TO_SRGB[1][2] * z;
         let b = XYZ_TO_SRGB[2][0] * x + XYZ_TO_SRGB[2][1] * y + XYZ_TO_SRGB[2][2] * z;
@@ -83,7 +77,7 @@ fn build_transform(illuminant_spd: &[f32; N_SPECTRAL]) -> RgbTransform {
     RgbTransform { a_rgb }
 }
 
-/// Convert a reflectance spectrum to linear sRGB via dot product with the precomputed matrix.
+/// 反射率スペクトルを指定した変換行列で線形 sRGB に変換します。
 pub fn spectrum_to_linear_rgb(refl: &[f32; N_SPECTRAL], transform: &RgbTransform) -> [f32; 3] {
     let mut rgb = [0.0f32; 3];
     for (c, rgb_ch) in rgb.iter_mut().enumerate() {
@@ -97,22 +91,22 @@ pub fn spectrum_to_linear_rgb(refl: &[f32; N_SPECTRAL], transform: &RgbTransform
     rgb
 }
 
-/// Return the cached RGB transform matrix for illuminant D65.
+/// D65 光源用のキャッシュ済み RGB 変換行列を返します。
 pub fn illuminant_d65() -> &'static RgbTransform {
     D65_TRANSFORM.get_or_init(|| build_transform(&ILLUMINANT_D65))
 }
 
-/// Return the cached RGB transform matrix for illuminant D50.
+/// D50 光源用のキャッシュ済み RGB 変換行列を返します。
 pub fn illuminant_d50() -> &'static RgbTransform {
     D50_TRANSFORM.get_or_init(|| build_transform(&ILLUMINANT_D50))
 }
 
-/// Return the cached RGB transform matrix for illuminant A.
+/// A 光源用のキャッシュ済み RGB 変換行列を返します。
 pub fn illuminant_a() -> &'static RgbTransform {
     A_TRANSFORM.get_or_init(|| build_transform(&ILLUMINANT_A))
 }
 
-/// Return the cached RGB transform matrix for equal-energy illuminant E.
+/// 等エネルギー光源 E 用のキャッシュ済み RGB 変換行列を返します。
 pub fn illuminant_e() -> &'static RgbTransform {
     E_TRANSFORM.get_or_init(|| build_transform(&ILLUMINANT_E))
 }

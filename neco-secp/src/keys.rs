@@ -8,17 +8,8 @@ use neco_sha2::Sha256;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-// -----------------------------------------------------------------------
-// 型エイリアス
-// -----------------------------------------------------------------------
-
 type FpField = Fp<Secp256k1Field>;
 type Scalar = Fp<Secp256k1Order>;
-
-// -----------------------------------------------------------------------
-// secp256k1 曲線定数
-// a = 0, b = 7, G = (Gx, Gy)
-// -----------------------------------------------------------------------
 
 fn curve_b() -> FpField {
     FpField::from_u256(U256::from_u64(7))
@@ -50,10 +41,6 @@ fn generator() -> AffinePoint {
 fn order_u256() -> U256 {
     Secp256k1Order::MODULUS
 }
-
-// -----------------------------------------------------------------------
-// 点の表現
-// -----------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct AffinePoint {
@@ -89,11 +76,7 @@ impl ProjectivePoint {
     }
 }
 
-// -----------------------------------------------------------------------
-// secp256k1 群演算
-// -----------------------------------------------------------------------
-
-/// 射影点の2倍算。secp256k1 は a=0 なので M = 3*X²。
+/// secp256k1 の式 `y² = x³ + 7` における射影点の二倍算。
 fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     if p.is_infinity {
         return ProjectivePoint::infinity();
@@ -103,23 +86,19 @@ fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     let y = p.y;
     let z = p.z;
 
-    // a=0: M = 3*X²
     let x2 = FpField::sqr(x);
     let two_x2 = FpField::add(x2, x2);
     let m = FpField::add(two_x2, x2);
 
-    // S = 4*X*Y²
     let y2 = FpField::sqr(y);
     let xy = FpField::mul(x, y2);
     let two_xy = FpField::add(xy, xy);
     let s = FpField::add(two_xy, two_xy);
 
-    // X' = M² - 2*S
     let m2 = FpField::sqr(m);
     let two_s = FpField::add(s, s);
     let x_new = FpField::sub(m2, two_s);
 
-    // Y' = M*(S - X') - 8*Y⁴
     let s_minus_x = FpField::sub(s, x_new);
     let my = FpField::mul(m, s_minus_x);
     let y4 = FpField::sqr(y2);
@@ -130,7 +109,6 @@ fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     };
     let y_new = FpField::sub(my, eight_y4);
 
-    // Z' = 2*Y*Z
     let yz = FpField::mul(y, z);
     let z_new = FpField::add(yz, yz);
 
@@ -142,7 +120,7 @@ fn point_double(p: ProjectivePoint) -> ProjectivePoint {
     }
 }
 
-/// 射影点の加算 (Jacobian)
+/// 射影点を加算する。
 fn point_add(p: ProjectivePoint, q: ProjectivePoint) -> ProjectivePoint {
     if p.is_infinity {
         return q;
@@ -211,7 +189,7 @@ fn to_affine(p: ProjectivePoint) -> Option<AffinePoint> {
     Some(AffinePoint { x, y })
 }
 
-/// Montgomery ladder: constant-time scalar multiplication
+/// スカラー倍は常に 256 回の反復で計算する。
 fn scalar_mul(k: U256, p: AffinePoint) -> ProjectivePoint {
     let mut r0 = ProjectivePoint::infinity();
     let mut r1 = ProjectivePoint::from_affine(p);
@@ -235,10 +213,6 @@ fn is_on_curve(p: AffinePoint) -> bool {
     let rhs = FpField::add(x3, curve_b());
     FpField::eq(y2, rhs)
 }
-
-// -----------------------------------------------------------------------
-// SEC1 エンコード/デコード
-// -----------------------------------------------------------------------
 
 fn encode_sec1_compressed(p: AffinePoint) -> [u8; 33] {
     let x_bytes = p.x.to_u256().to_be_bytes();
@@ -271,7 +245,6 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
     let x = FpField::from_u256(x_u256);
     let b = curve_b();
 
-    // y² = x³ + 7
     let x3 = FpField::mul(FpField::sqr(x), x);
     let rhs = FpField::add(x3, b);
 
@@ -295,10 +268,6 @@ fn decode_sec1_compressed(bytes: &[u8]) -> Option<AffinePoint> {
 
     Some(point)
 }
-
-// -----------------------------------------------------------------------
-// ECDSA 署名/検証
-// -----------------------------------------------------------------------
 
 fn normalize_s(s: U256, n: U256) -> U256 {
     let half_n = U256::shr1(n);
@@ -427,10 +396,6 @@ fn ecdsa_verify(pubkey_sec1: &[u8; 33], digest: &[u8; 32], sig_bytes: &[u8; 64])
     U256::cmp(r_x_mod_n, r) == core::cmp::Ordering::Equal
 }
 
-// -----------------------------------------------------------------------
-// BIP340 Schnorr
-// -----------------------------------------------------------------------
-
 fn tagged_hash(tag: &[u8], data: &[u8]) -> [u8; 32] {
     let tag_hash = Sha256::digest(tag);
     let mut h = Sha256::new();
@@ -458,7 +423,6 @@ fn lift_x(x_bytes: &[u8; 32]) -> Option<AffinePoint> {
     let y = FpField::sqrt(rhs, SQRT_EXP_SECP256K1)?;
     let y_u256 = y.to_u256();
 
-    // BIP340: 偶数 y を選択
     let y_final = if y_u256.l0 & 1 == 1 {
         FpField::neg(y)
     } else {
@@ -468,8 +432,8 @@ fn lift_x(x_bytes: &[u8; 32]) -> Option<AffinePoint> {
     Some(AffinePoint { x, y: y_final })
 }
 
+/// BIP340 の通常署名を作ります。補助乱数を nonce 導出に用いるため、同じ入力でも署名バイト列は異なる場合があります。
 fn schnorr_sign(secret: &[u8; 32], digest: &[u8; 32]) -> Option<[u8; 64]> {
-    // BIP340 recommends fresh randomness for fault attack resistance
     let mut aux = [0u8; 32];
     let _ = getrandom::getrandom(&mut aux);
     schnorr_sign_with_aux(secret, digest, &aux)
@@ -486,7 +450,6 @@ fn schnorr_sign_with_aux(secret: &[u8; 32], digest: &[u8; 32], aux: &[u8; 32]) -
     let p_proj = scalar_mul(d0, g);
     let p_affine = to_affine(p_proj)?;
 
-    // BIP340: y が奇数なら d = n - d0
     let py = p_affine.y.to_u256();
     let d = if py.l0 & 1 == 1 {
         let (neg, _) = U256::sub(n, d0);
@@ -497,14 +460,12 @@ fn schnorr_sign_with_aux(secret: &[u8; 32], digest: &[u8; 32], aux: &[u8; 32]) -
     let px_bytes = p_affine.x.to_u256().to_be_bytes();
 
     let t = tagged_hash(b"BIP0340/aux", aux);
-    // t XOR d
     let d_bytes = d.to_be_bytes();
     let mut rand = [0u8; 32];
     for i in 0..32 {
         rand[i] = d_bytes[i] ^ t[i];
     }
 
-    // nonce = tagged_hash("BIP0340/nonce", rand || px || digest)
     let mut nonce_input = [0u8; 96];
     nonce_input[..32].copy_from_slice(&rand);
     nonce_input[32..64].copy_from_slice(&px_bytes);
@@ -512,7 +473,6 @@ fn schnorr_sign_with_aux(secret: &[u8; 32], digest: &[u8; 32], aux: &[u8; 32]) -
     let nonce_hash = tagged_hash(b"BIP0340/nonce", &nonce_input);
 
     let k0 = U256::from_be_bytes(nonce_hash);
-    // k0 mod n
     let k0 = if let core::cmp::Ordering::Less = U256::cmp(k0, n) {
         k0
     } else {
@@ -536,7 +496,6 @@ fn schnorr_sign_with_aux(secret: &[u8; 32], digest: &[u8; 32], aux: &[u8; 32]) -
 
     let rx_bytes = r_affine.x.to_u256().to_be_bytes();
 
-    // e = tagged_hash("BIP0340/challenge", rx || px || digest) mod n
     let mut challenge_input = [0u8; 96];
     challenge_input[..32].copy_from_slice(&rx_bytes);
     challenge_input[32..64].copy_from_slice(&px_bytes);
@@ -550,7 +509,6 @@ fn schnorr_sign_with_aux(secret: &[u8; 32], digest: &[u8; 32], aux: &[u8; 32]) -
         v
     };
 
-    // sig = (rx, k + e*d mod n)
     let e_scalar = Scalar::from_u256(e);
     let d_scalar = Scalar::from_u256(d);
     let k_scalar = Scalar::from_u256(k);
@@ -578,7 +536,6 @@ fn schnorr_verify(pubkey_x: &[u8; 32], digest: &[u8; 32], sig: &[u8; 64]) -> boo
         None => return false,
     };
 
-    // e = tagged_hash("BIP0340/challenge", rx || px || digest) mod n
     let mut challenge_input = [0u8; 96];
     challenge_input[..32].copy_from_slice(&rx_bytes);
     challenge_input[32..64].copy_from_slice(pubkey_x);
@@ -594,9 +551,7 @@ fn schnorr_verify(pubkey_x: &[u8; 32], digest: &[u8; 32], sig: &[u8; 64]) -> boo
 
     let g = generator();
 
-    // R = s*G - e*P
     let sg = scalar_mul(s, g);
-    // -e*P = (n-e)*P
     let (neg_e, _) = U256::sub(n, e);
     let neg_ep = scalar_mul(neg_e, p);
     let r_proj = point_add(sg, neg_ep);
@@ -606,19 +561,13 @@ fn schnorr_verify(pubkey_x: &[u8; 32], digest: &[u8; 32], sig: &[u8; 64]) -> boo
         None => return false,
     };
 
-    // R.y must be even
     if r_affine.y.to_u256().l0 & 1 == 1 {
         return false;
     }
 
-    // R.x must equal rx
     let rx = U256::from_be_bytes(rx_bytes);
     r_affine.x.to_u256() == rx
 }
-
-// -----------------------------------------------------------------------
-// ECDH
-// -----------------------------------------------------------------------
 
 #[cfg(any(feature = "nip04", feature = "nip44"))]
 pub(crate) fn ecdh_raw(secret: &[u8; 32], pubkey: AffinePoint) -> Option<[u8; 32]> {
@@ -632,10 +581,6 @@ pub(crate) fn ecdh_raw(secret: &[u8; 32], pubkey: AffinePoint) -> Option<[u8; 32
     Some(q_affine.x.to_u256().to_be_bytes())
 }
 
-// -----------------------------------------------------------------------
-// 秘密鍵バリデーション
-// -----------------------------------------------------------------------
-
 fn validate_secret_key(bytes: &[u8; 32]) -> bool {
     let d = U256::from_be_bytes(*bytes);
     if U256::is_zero(d) {
@@ -644,16 +589,14 @@ fn validate_secret_key(bytes: &[u8; 32]) -> bool {
     matches!(U256::cmp(d, order_u256()), core::cmp::Ordering::Less)
 }
 
-// -----------------------------------------------------------------------
-// 公開 API
-// -----------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// secp256k1 の 32 バイト秘密鍵。
 pub struct SecretKey {
     pub(crate) bytes: [u8; 32],
 }
 
 impl SecretKey {
+    /// 暗号学的乱数から有効な秘密鍵を生成する。乱数取得失敗時は失敗する。
     pub fn generate() -> Result<Self, SecpError> {
         let n = order_u256();
         loop {
@@ -668,6 +611,7 @@ impl SecretKey {
         }
     }
 
+    /// 64 桁の 16 進文字列から秘密鍵を作る。零または曲線位数以上の値は失敗する。
     pub fn from_hex(hex: &str) -> Result<Self, SecpError> {
         let bytes = hex_decode(hex)?;
         if bytes.len() != 32 {
@@ -678,6 +622,7 @@ impl SecretKey {
         Self::from_bytes(arr)
     }
 
+    /// 32 バイトから秘密鍵を作る。零または曲線位数以上の値は失敗する。
     pub fn from_bytes(bytes: [u8; 32]) -> Result<Self, SecpError> {
         if !validate_secret_key(&bytes) {
             return Err(SecpError::InvalidSecretKey);
@@ -685,14 +630,17 @@ impl SecretKey {
         Ok(Self { bytes })
     }
 
+    /// 秘密鍵を小文字の 16 進文字列で返す。
     pub fn to_hex(&self) -> String {
         hex_encode(&self.bytes)
     }
 
+    /// 秘密鍵の 32 バイトを返す。
     pub fn to_bytes(&self) -> [u8; 32] {
         self.bytes
     }
 
+    /// 圧縮 SEC1 公開鍵を導出する。内部点を復元できない場合は失敗する。
     pub fn public_key(&self) -> Result<PublicKey, SecpError> {
         let d = U256::from_be_bytes(self.bytes);
         let g = generator();
@@ -702,6 +650,7 @@ impl SecretKey {
         Ok(PublicKey { sec1_bytes })
     }
 
+    /// x 座標だけからなる BIP340 公開鍵を導出する。内部点を復元できない場合は失敗する。
     pub fn xonly_public_key(&self) -> Result<XOnlyPublicKey, SecpError> {
         let d = U256::from_be_bytes(self.bytes);
         let g = generator();
@@ -711,17 +660,13 @@ impl SecretKey {
         Ok(XOnlyPublicKey { bytes: x_bytes })
     }
 
+    /// 32 バイトの事前ハッシュへ BIP340 Schnorr 署名を付与する。署名を作れない場合は失敗する。
     pub fn sign_schnorr_prehash(&self, digest32: [u8; 32]) -> Result<SchnorrSignature, SecpError> {
         let sig_bytes = schnorr_sign(&self.bytes, &digest32).ok_or(SecpError::InvalidSignature)?;
         Ok(SchnorrSignature { bytes: sig_bytes })
     }
 
-    /// aux_rand をゼロ固定にした決定的 BIP-340 Schnorr 署名。
-    ///
-    /// 同じ秘密鍵・同じ digest に対して常に同じ署名バイト列を返す。
-    /// BIP-340 はフォールトアタック耐性のためフレッシュな aux_rand を推奨しており、
-    /// 本 API はテスト互換や外部ツールとの fixture 照合用途に限って使用すること。
-    /// 通常の署名用途では [`sign_schnorr_prehash`] を使うこと。
+    /// 補助乱数を全零にした決定的な BIP340 Schnorr 署名を返す。同じ秘密鍵と事前ハッシュは同じ署名を返す。通常はフォールト攻撃への耐性を持つ [`Self::sign_schnorr_prehash`] を使う。
     pub fn sign_schnorr_prehash_deterministic(
         &self,
         digest32: [u8; 32],
@@ -732,6 +677,7 @@ impl SecretKey {
         Ok(SchnorrSignature { bytes: sig_bytes })
     }
 
+    /// 32 バイトの事前ハッシュへ低い S 値の ECDSA 署名を付与する。署名を作れない場合は失敗する。
     pub fn sign_ecdsa_prehash(&self, digest32: [u8; 32]) -> Result<EcdsaSignature, SecpError> {
         let sig_bytes = ecdsa_sign(&self.bytes, &digest32).ok_or(SecpError::InvalidSignature)?;
         Ok(EcdsaSignature { bytes: sig_bytes })
@@ -739,11 +685,13 @@ impl SecretKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 圧縮 SEC1 形式の secp256k1 公開鍵。
 pub struct PublicKey {
     sec1_bytes: [u8; 33],
 }
 
 impl PublicKey {
+    /// 66 桁の 16 進文字列から圧縮 SEC1 公開鍵を作る。形式または曲線点が無効な場合は失敗する。
     pub fn from_hex(hex: &str) -> Result<Self, SecpError> {
         let bytes = hex_decode(hex)?;
         if bytes.len() != 33 {
@@ -752,6 +700,7 @@ impl PublicKey {
         Self::from_sec1_bytes(&bytes)
     }
 
+    /// 33 バイトの圧縮 SEC1 値から公開鍵を作る。接頭辞、座標、または曲線点が無効な場合は失敗する。
     pub fn from_sec1_bytes(bytes: &[u8]) -> Result<Self, SecpError> {
         if bytes.len() != 33 {
             return Err(SecpError::InvalidPublicKey);
@@ -769,6 +718,7 @@ impl PublicKey {
         self.sec1_bytes
     }
 
+    /// 32 バイトの事前ハッシュと ECDSA 署名を検証する。検証不能な署名は失敗する。
     pub fn verify_ecdsa_prehash(
         &self,
         digest32: [u8; 32],
@@ -783,11 +733,13 @@ impl PublicKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// BIP340 の x 座標だけからなる secp256k1 公開鍵。
 pub struct XOnlyPublicKey {
     pub(crate) bytes: [u8; 32],
 }
 
 impl XOnlyPublicKey {
+    /// 64 桁の 16 進文字列から x 専用公開鍵を作る。x 座標が曲線点を表さない場合は失敗する。
     pub fn from_hex(hex: &str) -> Result<Self, SecpError> {
         let bytes = hex_decode(hex)?;
         if bytes.len() != 32 {
@@ -798,6 +750,7 @@ impl XOnlyPublicKey {
         Self::from_bytes(arr)
     }
 
+    /// 32 バイトの x 座標から公開鍵を作る。曲線点を復元できない場合は失敗する。
     pub fn from_bytes(bytes: [u8; 32]) -> Result<Self, SecpError> {
         let _ = lift_x(&bytes).ok_or(SecpError::InvalidPublicKey)?;
         Ok(Self { bytes })
@@ -811,6 +764,7 @@ impl XOnlyPublicKey {
         self.bytes
     }
 
+    /// 32 バイトの事前ハッシュと BIP340 署名を検証する。検証不能な署名は失敗する。
     pub fn verify_schnorr_prehash(
         &self,
         digest32: [u8; 32],

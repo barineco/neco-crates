@@ -1,4 +1,4 @@
-//! Memory-only signing vault built on `neco-secp`.
+//! `neco-secp` を用いるメモリ内署名保管庫。
 
 use std::collections::HashMap;
 #[cfg(feature = "security-hardening")]
@@ -76,7 +76,7 @@ pub enum VaultError {
     Crypto(SecpError),
 }
 
-/// Sealed DM result with scanning tag for stealth discovery.
+/// スキャン用タグを伴う封印済み DM の結果。
 #[cfg(feature = "nip17")]
 pub struct SealedDmResult {
     pub event: SignedEvent,
@@ -666,8 +666,7 @@ impl Vault {
         })
     }
 
-    /// Compute scanning tag using an explicit scan private key.
-    /// scan_priv is independent from the signing key (DJ-I1).
+    /// 明示したスキャン用秘密鍵でスキャンタグを計算します。スキャン用秘密鍵は署名鍵から独立しています。
     pub fn compute_scan_tag(
         scan_priv: &SecretKey,
         ephemeral_pubkey: &XOnlyPublicKey,
@@ -705,6 +704,7 @@ impl Vault {
 
 #[cfg(feature = "encrypted")]
 impl Vault {
+    /// ラベルの秘密鍵を暗号化して返す。形式はバージョン、scrypt パラメータ、32 バイトの salt、16 バイトの IV、AES-256-CBC 暗号文であり、ラベル不在または乱数・暗号化失敗時は失敗する。
     pub fn export_encrypted(&self, label: &str, passphrase: &[u8]) -> Result<Vec<u8>, VaultError> {
         let entry = self.entries.get(label).ok_or(VaultError::MissingLabel)?;
         let mut salt = [0u8; 32];
@@ -732,6 +732,7 @@ impl Vault {
         Ok(out)
     }
 
+    /// 暗号化した秘密鍵を復号して取り込む。形式、復号結果、秘密鍵、またはラベルが無効な場合は失敗する。
     pub fn import_encrypted(
         &mut self,
         label: &str,
@@ -779,19 +780,9 @@ impl Vault {
     }
 }
 
-// --- epoch key + group key API (dm-epoch feature) ---
-
 #[cfg(feature = "dm-epoch")]
 impl Vault {
-    /// Derive an epoch key for a 1:1 DM conversation.
-    ///
-    /// `epoch_secret` is the NIP-44 conversation key (ECDH) between `label`'s
-    /// secret key and `peer_pubkey`.  The epoch key chain is then:
-    ///
-    /// ```text
-    /// epoch_key[0] = HKDF-SHA256(epoch_secret, "dm-epoch-0", 32)
-    /// epoch_key[n] = HKDF-SHA256(epoch_key[n-1], "dm-epoch-rotate", 32)
-    /// ```
+    /// ラベルの秘密鍵と相手の公開鍵から会話鍵を作り、指定回数だけ更新したエポック鍵を返す。ラベルまたは会話鍵が無効な場合は失敗する。
     pub fn derive_epoch_key(
         &self,
         label: &str,
@@ -812,9 +803,7 @@ impl Vault {
         Ok(key)
     }
 
-    /// Encrypt `plaintext` with a symmetric epoch key using ChaCha20-Poly1305.
-    ///
-    /// Returns `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
+    /// ChaCha20-Poly1305 で平文を暗号化する。返却値は 12 バイトの nonce、暗号文、16 バイトのタグを連結した値であり、乱数または暗号化失敗時は失敗する。
     pub fn encrypt_with_epoch(
         epoch_key: &[u8; 32],
         plaintext: &[u8],
@@ -835,9 +824,7 @@ impl Vault {
         Ok(out)
     }
 
-    /// Decrypt ciphertext produced by [`encrypt_with_epoch`](Self::encrypt_with_epoch).
-    ///
-    /// Expects `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
+    /// [`encrypt_with_epoch`](Self::encrypt_with_epoch) の nonce、暗号文、タグを連結した値を復号する。44 バイト未満または認証失敗時は失敗する。
     pub fn decrypt_with_epoch(
         epoch_key: &[u8; 32],
         ciphertext: &[u8],
@@ -856,19 +843,14 @@ impl Vault {
             .map_err(|_| VaultError::InvalidEncrypted("epoch decryption failed"))
     }
 
-    /// Generate a fresh random group key (32 bytes from CSPRNG).
+    /// 32 バイトのグループ鍵を返す。乱数取得に失敗した場合も失敗を返さず、零初期化した鍵を返し得る。
     pub fn create_group_key() -> [u8; 32] {
         let mut key = [0u8; 32];
-        // getrandom can only fail on unsupported platforms; panic is acceptable
-        // in production, but we avoid unwrap() outside tests per project rules.
         let _ = getrandom::getrandom(&mut key);
         key
     }
 
-    /// Encrypt a group key for a recipient using an ephemeral ECDH key pair
-    /// and NIP-44 encryption.
-    ///
-    /// Returns `ephemeral_pubkey (32 bytes) || nip44_payload (base64-encoded string as UTF-8 bytes)`.
+    /// 一時 ECDH 鍵と NIP-44 でグループ鍵を受信者向けに暗号化する。返却値は 32 バイトの一時公開鍵と UTF-8 の NIP-44 ペイロードを連結した値であり、鍵生成または暗号化失敗時は失敗する。
     pub fn encrypt_group_key(
         group_key: &[u8; 32],
         recipient_pubkey: &XOnlyPublicKey,
@@ -886,7 +868,7 @@ impl Vault {
         Ok(out)
     }
 
-    /// Decrypt a group key that was encrypted with [`encrypt_group_key`](Self::encrypt_group_key).
+    /// [`encrypt_group_key`](Self::encrypt_group_key) の値を復号して 32 バイトのグループ鍵を返す。形式、鍵、復号結果、またはラベルが無効な場合は失敗する。
     pub fn decrypt_group_key(&self, label: &str, encrypted: &[u8]) -> Result<[u8; 32], VaultError> {
         if encrypted.len() < 33 {
             return Err(VaultError::InvalidEncrypted(
@@ -914,7 +896,7 @@ impl Vault {
         Ok(key)
     }
 
-    /// Encrypt a group message (alias for [`encrypt_with_epoch`](Self::encrypt_with_epoch)).
+    /// グループエポック鍵でメッセージを暗号化する。返却形式と失敗条件は [`encrypt_with_epoch`](Self::encrypt_with_epoch) と同じである。
     pub fn encrypt_group_message(
         group_epoch_key: &[u8; 32],
         plaintext: &[u8],
@@ -922,7 +904,7 @@ impl Vault {
         Self::encrypt_with_epoch(group_epoch_key, plaintext)
     }
 
-    /// Decrypt a group message (alias for [`decrypt_with_epoch`](Self::decrypt_with_epoch)).
+    /// グループエポック鍵でメッセージを復号する。入力形式と失敗条件は [`decrypt_with_epoch`](Self::decrypt_with_epoch) と同じである。
     pub fn decrypt_group_message(
         group_epoch_key: &[u8; 32],
         ciphertext: &[u8],
@@ -930,16 +912,13 @@ impl Vault {
         Self::decrypt_with_epoch(group_epoch_key, ciphertext)
     }
 
-    /// Rotate a group epoch key: `HKDF-SHA256(current_key, "group-epoch-rotate", 32)`.
+    /// `HKDF-SHA256(current_key, "group-epoch-rotate", 32)` で次のグループエポック鍵を返す。
     pub fn rotate_group_epoch(current_key: &[u8; 32]) -> [u8; 32] {
         Self::hkdf_rotate(current_key, b"group-epoch-rotate")
     }
 
-    // --- internal helpers ---
-
     fn hkdf_rotate(key: &[u8; 32], info: &[u8]) -> [u8; 32] {
         let prk = neco_sha2::Prk::from_bytes(key);
-        // 32 bytes is always within HKDF limits; safe to expect in private helper.
         let expanded = prk.expand(info, 32).expect("HKDF expand 32 bytes");
         let mut out = [0u8; 32];
         out.copy_from_slice(&expanded);
@@ -1291,10 +1270,6 @@ mod tests {
             content: "hello".to_string(),
         };
 
-        // vault と core 経路はどちらも BIP-340 推奨のランダム aux_rand で
-        // 署名するため、sig のバイト列は呼び出しごとに異なる。よって等価性は
-        // 「id/pubkey/created_at/kind/tags/content が一致し、両方とも verify OK」
-        // という意味不変量で検証する。
         let from_vault = vault
             .sign_event("main", unsigned.clone(), 102)
             .expect("vault sign");
@@ -1745,8 +1720,6 @@ mod tests {
         assert_eq!(inner.kind, 14);
         assert_eq!(inner.content, "hello via scan tag");
     }
-
-    // --- dm-epoch tests ---
 
     #[test]
     #[cfg(feature = "dm-epoch")]

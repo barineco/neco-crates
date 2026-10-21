@@ -6,13 +6,20 @@
 
 ## クラスタリングと分割
 
-重み付きグラフでは、隣接行列から非正規化 Laplacian を構成します。
+重み付きグラフでは、隣接行列から非正規化ラプラシアンを構成します。
 
 $$L = D - W$$
 
-次数行列を mass matrix とする一般化固有値問題を解き、得られた埋め込みを行ごとに正規化してクラスタへ割り当てます。孤立 node には `1.0` の mass を置きます。
+次数行列を一般化固有値問題の質量行列として用います。得られた埋め込みを行ごとに正規化し、各ノードをクラスタに割り当てます。孤立ノードの質量には 1 を用います。
 
-非重み付き隣接リストには、スペクトル二分割、Kernighan-Lin 改良、再帰分割もあります。
+非重み付きの隣接リストには、スペクトル二分割、Kernighan-Lin 改良、再帰分割を提供します。
+
+厳密な隣接行列は、認証付き数値射影によるクラスタリングの入力です。公開する型と関数は次のとおりです。
+
+- 入力: `ExactSpectralRequest`
+- 利用目的: `ClusteringAdjacency`
+- 実行関数: `spectral_cluster_exact`
+- 対応情報: `SpectralProjectionReference`
 
 ## 使い方
 
@@ -68,11 +75,14 @@ for row in result.embedding() {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-## API
+## 公開 API
 
-クラスタリング API は次のとおりです。
+クラスタリングの公開 API は次のとおりです。
 
 - `spectral_cluster`
+- `spectral_cluster_exact`
+- `ExactSpectralRequest`
+- `SpectralProjectionReference`
 - `SpectralResult::assignments()`
 - `SpectralResult::cluster_count()`
 - `SpectralResult::embedding()`
@@ -82,9 +92,10 @@ for row in result.embedding() {
 
 ```text
 spectral_cluster(adjacency, cluster_count, eigensolve_config, max_kmeans_iterations)
+spectral_cluster_exact(exact_request)
 ```
 
-グラフ分割 API は次のとおりです。
+グラフ分割の公開 API は次のとおりです。
 
 - `spectral_bisect(graph)`
 - `kl_refine(graph, part_a, part_b)`
@@ -94,8 +105,8 @@ spectral_cluster(adjacency, cluster_count, eigensolve_config, max_kmeans_iterati
 ## 事前条件
 
 - 隣接行列: 正方、有限値、対称
-- cluster 数: `1..=node_count`
-- 固有値計算の mode 数: cluster 数と一致
+- クラスタ数: `1..=node_count`
+- 固有値計算のモード数: クラスタ数と一致
 
 ## ライセンス
 

@@ -69,7 +69,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         forward: false,
     };
 
-    // bottom (z=-hlz, normal -Z)
     shell.faces.push(Face {
         loop_edges: vec![rev(e3), rev(e2), rev(e1), rev(e0)],
         surface: Surface::Plane {
@@ -78,7 +77,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         },
         orientation_reversed: false,
     });
-    // top (z=+hlz, normal +Z)
     shell.faces.push(Face {
         loop_edges: vec![fwd(e4), fwd(e5), fwd(e6), fwd(e7)],
         surface: Surface::Plane {
@@ -87,7 +85,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         },
         orientation_reversed: false,
     });
-    // front (y=-hly, normal -Y)
     shell.faces.push(Face {
         loop_edges: vec![fwd(e0), fwd(e9), rev(e4), rev(e8)],
         surface: Surface::Plane {
@@ -96,7 +93,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         },
         orientation_reversed: false,
     });
-    // back (y=+hly, normal +Y)
     shell.faces.push(Face {
         loop_edges: vec![fwd(e2), fwd(e11), rev(e6), rev(e10)],
         surface: Surface::Plane {
@@ -105,7 +101,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         },
         orientation_reversed: false,
     });
-    // left (x=-hlx, normal -X)
     shell.faces.push(Face {
         loop_edges: vec![fwd(e8), rev(e7), rev(e11), fwd(e3)],
         surface: Surface::Plane {
@@ -114,7 +109,6 @@ pub fn shell_from_box(lx: f64, ly: f64, lz: f64) -> Shell {
         },
         orientation_reversed: false,
     });
-    // right (x=+hlx, normal +X)
     shell.faces.push(Face {
         loop_edges: vec![fwd(e1), fwd(e10), rev(e5), rev(e9)],
         surface: Surface::Plane {
@@ -142,7 +136,6 @@ pub fn shell_from_sphere(radius: f64) -> Shell {
     let axis = [0.0, 1.0, 0.0];
     let eq_verts = [v_eq0, v_eq1, v_eq2, v_eq3];
 
-    // Equatorial arc edges
     let mut eq_edges = Vec::with_capacity(4);
     for i in 0..4 {
         let j = (i + 1) % 4;
@@ -156,7 +149,6 @@ pub fn shell_from_sphere(radius: f64) -> Shell {
         eq_edges.push(shell.add_edge(eq_verts[i], eq_verts[j], arc));
     }
 
-    // Northern meridian arc edges
     let mut north_edges = Vec::with_capacity(4);
     for &eq_vert in &eq_verts {
         let start_pt = shell.vertices[eq_vert];
@@ -173,7 +165,6 @@ pub fn shell_from_sphere(radius: f64) -> Shell {
         north_edges.push(shell.add_edge(eq_vert, v_north, arc));
     }
 
-    // Southern meridian arc edges
     let mut south_edges = Vec::with_capacity(4);
     for &eq_vert in &eq_verts {
         let start_pt = shell.vertices[eq_vert];
@@ -200,7 +191,6 @@ pub fn shell_from_sphere(radius: f64) -> Shell {
     };
     let sphere_surface = Surface::Sphere { center, radius };
 
-    // Northern hemisphere: 4 spherical triangles
     for i in 0..4 {
         let j = (i + 1) % 4;
         shell.faces.push(Face {
@@ -210,7 +200,6 @@ pub fn shell_from_sphere(radius: f64) -> Shell {
         });
     }
 
-    // Southern hemisphere: 4 spherical triangles
     for i in 0..4 {
         let j = (i + 1) % 4;
         shell.faces.push(Face {
@@ -278,7 +267,6 @@ pub fn shell_from_torus(major_radius: f64, minor_radius: f64) -> Shell {
     let u_dir = [1.0, 0.0, 0.0];
     let v_dir = [0.0, 1.0, 0.0];
 
-    // 4 points on the major circle
     let major_pts: Vec<[f64; 3]> = (0..4)
         .map(|i| {
             let theta = std::f64::consts::FRAC_PI_2 * i as f64;
@@ -289,7 +277,6 @@ pub fn shell_from_torus(major_radius: f64, minor_radius: f64) -> Shell {
         })
         .collect();
 
-    // 4 tube cross-section points at each major circle point
     let mut grid_verts = [[0usize; 4]; 4];
     for mi in 0..4 {
         let radial = vec3::normalized(major_pts[mi]);
@@ -306,7 +293,6 @@ pub fn shell_from_torus(major_radius: f64, minor_radius: f64) -> Shell {
         }
     }
 
-    // Major-circle arc edges
     let mut major_edges = [[0usize; 4]; 4];
     for mi in 0..4 {
         let mj = (mi + 1) % 4;
@@ -327,7 +313,6 @@ pub fn shell_from_torus(major_radius: f64, minor_radius: f64) -> Shell {
         }
     }
 
-    // Minor-circle arc edges
     let mut minor_edges = [[0usize; 4]; 4];
     for mi in 0..4 {
         let radial = vec3::normalized(major_pts[mi]);
@@ -422,12 +407,11 @@ pub fn shell_from_torus(major_radius: f64, minor_radius: f64) -> Shell {
     shell
 }
 
-/// Cylinder Shell centered at origin, Z-axis, with caps and lateral faces.
+/// 原点中心で Z 軸に沿う円柱の Shell を返します。内半径が未指定または零なら側面と両端の平面を生成し、それ以外では側面だけを生成します。
 pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> Shell {
     let mut shell = Shell::new();
     let hz = length * 0.5;
 
-    // Outer surface vertices: 4 at bottom, 4 at top
     let mut bot_verts = Vec::with_capacity(4);
     let mut top_verts = Vec::with_capacity(4);
     for i in 0..4 {
@@ -447,7 +431,6 @@ pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> S
         forward: false,
     };
 
-    // Bottom and top arc edges
     let mut bot_edges = Vec::with_capacity(4);
     let mut top_edges = Vec::with_capacity(4);
     for i in 0..4 {
@@ -471,7 +454,6 @@ pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> S
         top_edges.push(shell.add_edge(top_verts[i], top_verts[j], top_arc));
     }
 
-    // Vertical line edges
     let mut vert_edges = Vec::with_capacity(4);
     for i in 0..4 {
         let line = Curve3D::Line {
@@ -481,7 +463,6 @@ pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> S
         vert_edges.push(shell.add_edge(bot_verts[i], top_verts[i], line));
     }
 
-    // Lateral faces: 4 cylinder quads
     let cyl_surface = Surface::Cylinder {
         origin: [0.0, 0.0, -hz],
         axis: [0.0, 0.0, length],
@@ -502,7 +483,6 @@ pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> S
     }
 
     if inner_r.is_none() || inner_r == Some(0.0) {
-        // Caps: bottom and top planes
         shell.faces.push(Face {
             loop_edges: (0..4).rev().map(|i| rev(bot_edges[i])).collect(),
             surface: Surface::Plane {
@@ -520,7 +500,6 @@ pub fn shell_from_cylinder(outer_r: f64, inner_r: Option<f64>, length: f64) -> S
             orientation_reversed: false,
         });
     }
-    // inner_r support is a future extension
 
     shell
 }
@@ -534,7 +513,6 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
 
     let make_ring = |shell: &mut Shell, r: f64, z: f64| -> Vec<usize> {
         if r < 1e-15 {
-            // Degenerate: single apex vertex
             let v = shell.add_vertex([0.0, 0.0, z]);
             vec![v; 4]
         } else {
@@ -562,7 +540,6 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
     let bot_degenerate = r_bottom < 1e-15;
     let top_degenerate = r_top < 1e-15;
 
-    // Bottom and top arc edges (if not degenerate)
     let mut bot_edges = Vec::with_capacity(4);
     let mut top_edges = Vec::with_capacity(4);
 
@@ -594,7 +571,6 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
         }
     }
 
-    // Vertical line edges
     let mut vert_edges = Vec::with_capacity(4);
     for i in 0..4 {
         let line = Curve3D::Line {
@@ -604,9 +580,8 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
         vert_edges.push(shell.add_edge(bot_verts[i], top_verts[i], line));
     }
 
-    // Half-angle computation
     let half_angle = if (r_bottom - r_top).abs() < 1e-15 {
-        0.0 // pure cylinder
+        0.0
     } else {
         ((r_top - r_bottom).abs() / length).atan()
     };
@@ -617,25 +592,21 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
         half_angle,
     };
 
-    // Lateral faces
     for i in 0..4 {
         let j = (i + 1) % 4;
         if bot_degenerate {
-            // Triangle face (degenerate bottom)
             shell.faces.push(Face {
                 loop_edges: vec![fwd(vert_edges[j]), rev(top_edges[i]), rev(vert_edges[i])],
                 surface: cone_surface.clone(),
                 orientation_reversed: false,
             });
         } else if top_degenerate {
-            // Triangle face (degenerate top)
             shell.faces.push(Face {
                 loop_edges: vec![fwd(bot_edges[i]), fwd(vert_edges[j]), rev(vert_edges[i])],
                 surface: cone_surface.clone(),
                 orientation_reversed: false,
             });
         } else {
-            // Quad face
             shell.faces.push(Face {
                 loop_edges: vec![
                     fwd(bot_edges[i]),
@@ -649,7 +620,6 @@ pub fn shell_from_cone(r_bottom: f64, r_top: f64, length: f64) -> Shell {
         }
     }
 
-    // Caps
     if !bot_degenerate {
         shell.faces.push(Face {
             loop_edges: (0..4).rev().map(|i| rev(bot_edges[i])).collect(),
@@ -705,8 +675,6 @@ mod tests {
         let shell = shell_from_sphere(1.0);
         assert_eq!(shell.vertices.len(), 6);
         assert_eq!(shell.faces.len(), 8);
-        // Trim-aware tessellation now handles seam-crossing sphere faces, but the
-        // full sphere shell is not yet watertight enough to promote to validate_shell().
     }
 
     #[test]
@@ -776,23 +744,18 @@ mod tests {
     #[test]
     fn cylinder_shell() {
         let shell = shell_from_cylinder(1.0, None, 2.0);
-        // 4 side + 2 cap = 6
         assert_eq!(shell.faces.len(), 6);
-        // The lateral trim is now respected, but plane caps still tessellate arc edges
-        // as straight chords, so full-shell watertight validation is not fixed here.
     }
 
     #[test]
     fn cone_shell() {
         let shell = shell_from_cone(1.0, 0.0, 2.0);
-        // 4 side (triangles) + 1 bottom cap = 5
         assert_eq!(shell.faces.len(), 5);
     }
 
     #[test]
     fn cone_frustum_shell() {
         let shell = shell_from_cone(1.0, 0.5, 2.0);
-        // 4 side (quads) + 2 caps = 6
         assert_eq!(shell.faces.len(), 6);
     }
 }

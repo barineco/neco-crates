@@ -1,4 +1,4 @@
-//! Tetrahedral mesh with explicit adjacency information and search utilities.
+//! 隣接情報を持つ四面体メッシュを実装します。
 
 use std::collections::{HashMap, HashSet};
 
@@ -7,7 +7,7 @@ use crate::point3::Point3;
 
 use crate::predicates::{orient3d, p3};
 
-/// Tetrahedral mesh with adjacency links for each face.
+/// 面ごとの隣接情報を持つ四面体メッシュです。
 #[derive(Debug, Clone)]
 pub struct TetMesh {
     pub nodes: Vec<Point3>,
@@ -258,7 +258,6 @@ impl TetMesh {
                 p3(&self.nodes[tet[3]]),
             ];
 
-            //
             let ref_orient = orient3d(v[0], v[1], v[2], v[3]);
 
             let mut found_outside = false;
@@ -485,9 +484,8 @@ mod tests {
         let mesh = generate_box_mesh(1.0, 1.0, 1.0, 1.0);
         let tet_mesh = TetMesh::from_mesh3d(&mesh);
 
-        // idx(i,j,k) = k*2*2 + j*2 + i
-        let v0 = 0; // (0,0,0)
-        let v1 = 1; // (1,0,0)
+        let v0 = 0;
+        let v1 = 1;
 
         let ring = tet_mesh.edge_ring(v0, v1);
         assert!(!ring.is_empty(), "edge_ring({}, {}) is empty", v0, v1);
@@ -522,10 +520,7 @@ mod tests {
         let mesh = generate_box_mesh(1.0, 1.0, 1.0, 0.5);
         let tet_mesh = TetMesh::from_mesh3d(&mesh);
 
-        // nx=ny=nz=3, idx(i,j,k) = k*9 + j*3 + i
-        let _center = 13; // (0.5, 0.5, 0.5)
-
-        // (1.0, 0.5, 0.5) = idx(2,1,1) = 1*9 + 1*3 + 2 = 14
+        let _center = 13;
 
         let mut found_cyclic = false;
         'outer: for ti in 0..tet_mesh.tets.len() {

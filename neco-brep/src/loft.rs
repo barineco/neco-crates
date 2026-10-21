@@ -1,4 +1,4 @@
-//! Loft (connect multiple cross-section profiles) B-Rep generation.
+//! 複数の断面プロファイルから B-Rep を生成します。
 
 use neco_nurbs::NurbsCurve2D;
 
@@ -6,7 +6,6 @@ use crate::brep::{Curve3D, EdgeRef, Face, Shell, Surface};
 use crate::types::{LoftMode, LoftSection};
 use crate::vec3;
 
-/// Transform a point by a 4x4 matrix.
 fn transform_point(m: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
     [
         m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] + m[0][3],
@@ -15,12 +14,9 @@ fn transform_point(m: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
     ]
 }
 
-/// Loft sections into a Shell.
+/// 二つ以上の断面からシェルを生成します。
 ///
-/// Straight mode: ruled surface (degree_u=1).
-/// Smooth mode: Catmull-Rom to cubic Bezier (degree_u=3).
-/// Generates faces from corresponding Bezier spans of each section pair,
-/// plus cap faces (Plane) at first and last sections.
+/// `Straight` は隣接する断面を一枚の NURBS 面で結びます。`Smooth` は Catmull-Rom 補間を三次 Bézier 行へ変換します。両端には平面の蓋を加えます。Bézier 区間がない場合と、断面ごとの区間数が一致しない場合は失敗します。
 pub fn shell_from_loft(sections: &[LoftSection], mode: LoftMode) -> Result<Shell, String> {
     if sections.len() < 2 {
         return Err("loft: at least 2 sections required".into());
@@ -86,7 +82,6 @@ pub fn shell_from_loft(sections: &[LoftSection], mode: LoftMode) -> Result<Shell
         forward: false,
     };
 
-    // --- Side faces (ruled surfaces between adjacent sections) ---
     for layer in 0..n_sections - 1 {
         let sec0 = &sections[layer];
         let sec1 = &sections[layer + 1];
@@ -159,8 +154,6 @@ pub fn shell_from_loft(sections: &[LoftSection], mode: LoftMode) -> Result<Shell
         });
     }
 
-    // --- Cap faces ---
-    // Bottom (section 0)
     {
         let sec0 = &sections[0];
         let sec1 = &sections[1];
@@ -205,7 +198,6 @@ pub fn shell_from_loft(sections: &[LoftSection], mode: LoftMode) -> Result<Shell
         });
     }
 
-    // Top (last section)
     {
         let last = n_sections - 1;
         let sec_last = &sections[last];
@@ -254,10 +246,7 @@ pub fn shell_from_loft(sections: &[LoftSection], mode: LoftMode) -> Result<Shell
     Ok(shell)
 }
 
-/// Smooth mode Loft -> Shell.
-///
-/// Elevates all section Bezier spans to a unified degree, then converts
-/// via Catmull-Rom -> cubic Bezier to build NurbsSurface { degree_u=3 }.
+/// 滑らかなロフト面を生成します。
 fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
     let n_sections = sections.len();
 
@@ -287,7 +276,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         }
     }
 
-    // Compute unified max degree across all sections and spans
     let max_deg = all_spans
         .iter()
         .flat_map(|spans| spans.iter().map(|s| s.degree))
@@ -295,7 +283,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         .unwrap_or(1)
         .max(1);
 
-    // Elevate each section's spans to max_deg and convert to 3D
     let to_world_3d = |sec: &LoftSection, p2: &[f64; 2]| -> [f64; 3] {
         transform_point(&sec.transform, [p2[0], p2[1], 0.0])
     };
@@ -318,7 +305,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         section_ws.push(ws);
     }
 
-    // C0 Bezier knot vector (v direction)
     let mut knots_v = vec![0.0; max_deg + 1];
     for i in 1..n_spans {
         let t = i as f64 / n_spans as f64;
@@ -354,9 +340,7 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         forward: false,
     };
 
-    // --- Side faces (Catmull-Rom -> Bezier segment per section pair) ---
     for seg in 0..n_sections - 1 {
-        // Ghost points for Catmull-Rom at boundaries
         let p_prev: Vec<[f64; 3]> = if seg > 0 {
             section_cps[seg - 1].clone()
         } else {
@@ -430,7 +414,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
             }
         }
 
-        // Vertical edge (cubic Bezier)
         let vert_b0 = nurbs.control_points[0][0];
         let vert_b1 = nurbs.control_points[1][0];
         let vert_b2 = nurbs.control_points[2][0];
@@ -462,8 +445,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         });
     }
 
-    // --- Cap faces ---
-    // Bottom (section 0)
     {
         let sec0 = &sections[0];
         let sec1 = &sections[1];
@@ -508,7 +489,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
         });
     }
 
-    // Top (last section)
     {
         let last = n_sections - 1;
         let sec_last = &sections[last];
@@ -557,7 +537,6 @@ fn shell_from_loft_smooth(sections: &[LoftSection]) -> Result<Shell, String> {
     Ok(shell)
 }
 
-/// Convert 4 Catmull-Rom section CP rows into 4 cubic Bezier CP rows.
 fn catmull_rom_to_bezier_rows(
     p_prev: &[[f64; 3]],
     p_curr: &[[f64; 3]],
@@ -582,7 +561,6 @@ fn catmull_rom_to_bezier_rows(
     [b0, b1, b2, b3]
 }
 
-/// Build NurbsSurface3D for smooth loft (degree_u=3, degree_v=max_deg).
 fn nurbs_surface_from_smooth_loft(
     rows: [Vec<[f64; 3]>; 4],
     weights: &[f64],
@@ -600,10 +578,6 @@ fn nurbs_surface_from_smooth_loft(
     }
 }
 
-/// Build a ruled NurbsSurface3D from two section span sets.
-///
-/// Elevates each Bezier span to the max degree and concatenates in v direction.
-/// S(u, v) = (1-u)*C0(v) + u*C1(v) with degree_u=1, degree_v=max_deg.
 fn nurbs_surface_from_loft_unified(
     spans0: &[NurbsCurve2D],
     spans1: &[NurbsCurve2D],
@@ -647,7 +621,6 @@ fn nurbs_surface_from_loft_unified(
         }
     }
 
-    // v-direction knots: Bezier span concatenation
     let mut knots_v = vec![0.0; max_deg + 1];
     for i in 1..n_spans {
         let t = i as f64 / n_spans as f64;
@@ -669,7 +642,6 @@ fn nurbs_surface_from_loft_unified(
     }
 }
 
-/// Degree-elevate a Bezier span to `target_deg`. Returns as-is if already at target.
 fn elevate_span_to_degree(span: &NurbsCurve2D, target_deg: usize) -> (Vec<[f64; 2]>, Vec<f64>) {
     let mut cps = span.control_points.clone();
     let mut ws = span.weights.clone();
@@ -681,7 +653,6 @@ fn elevate_span_to_degree(span: &NurbsCurve2D, target_deg: usize) -> (Vec<[f64; 
         let mut new_cps = Vec::with_capacity(new_n);
         let mut new_ws = Vec::with_capacity(new_n);
 
-        // Rational degree elevation in homogeneous coordinates (w*x, w*y, w)
         for i in 0..new_n {
             let alpha = i as f64 / (deg + 1) as f64;
             if i == 0 {
@@ -746,7 +717,6 @@ mod tests {
         ];
         let shell = shell_from_loft(&sections, LoftMode::Straight).unwrap();
 
-        // 1 merged side + 2 caps = 3 faces
         assert_eq!(shell.faces.len(), 3, "face count: {}", shell.faces.len());
 
         let plane_count = shell
@@ -789,7 +759,6 @@ mod tests {
         ];
         let shell = shell_from_loft(&sections, LoftMode::Straight).unwrap();
 
-        // 1 merged side x 2 layers + 2 caps = 4 faces
         assert_eq!(shell.faces.len(), 4, "face count: {}", shell.faces.len());
     }
 }

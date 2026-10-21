@@ -28,12 +28,10 @@ fn decode_with_alphabet(
 ) -> Result<Vec<u8>, Base64Error> {
     let unpadded = input.trim_end_matches('=');
 
-    // '=' in the middle is invalid
     if unpadded.bytes().any(|b| b == b'=') {
         return Err(Base64Error::InvalidCharacter);
     }
 
-    // length mod 4 == 1 is never valid
     if unpadded.len() % 4 == 1 {
         return Err(Base64Error::InvalidLength);
     }
@@ -73,18 +71,17 @@ fn decode_with_alphabet(
     Ok(output)
 }
 
-/// Decode standard Base64. Accepts both padded and unpadded input.
+/// パディングの有無にかかわらず標準 Base64 を復号します。途中にある `=`、無効な文字、4 で割った余りが 1 になる長さは失敗します。
 pub fn decode(input: &str) -> Result<Vec<u8>, Base64Error> {
     decode_with_alphabet(input, standard_value)
 }
 
-/// Decode URL-safe Base64. Accepts both padded and unpadded input.
+/// パディングの有無にかかわらず URL セーフ Base64 を復号します。標準 Base64 と同じく、途中にある `=`、無効な文字、4 で割った余りが 1 になる長さは失敗します。
 pub fn decode_url(input: &str) -> Result<Vec<u8>, Base64Error> {
     decode_with_alphabet(input, url_value)
 }
 
-/// Decode URL-safe Base64 with strict validation: rejects padding characters
-/// and requires that unused trailing bits are zero.
+/// パディング文字と非ゼロの未使用末尾ビットを拒否して URL セーフ Base64 を復号します。
 pub fn decode_url_strict(input: &str) -> Result<Vec<u8>, Base64Error> {
     if input.contains('=') {
         return Err(Base64Error::InvalidCharacter);

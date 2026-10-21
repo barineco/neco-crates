@@ -13,7 +13,7 @@ fn checked_triangle_count(len: usize) -> std::io::Result<u32> {
     })
 }
 
-/// Write binary STL.
+/// 三角形の頂点順序から求めた法線と頂点をバイナリ STL へ出力します。三角形数が上限を超える場合は入力エラーを返します。
 pub fn write_stl_binary(mesh: &TriMesh, writer: &mut dyn Write) -> std::io::Result<()> {
     let header = [0u8; 80];
     writer.write_all(&header)?;
@@ -91,7 +91,6 @@ mod tests {
         let mesh = make_single_triangle_mesh();
         let mut buf = Vec::new();
         write_stl_binary(&mesh, &mut buf).expect("binary STL write failed");
-        // 80 + 4 + 50 * 1 = 134
         assert_eq!(buf.len(), 134);
     }
 

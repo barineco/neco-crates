@@ -1,4 +1,4 @@
-//! Bowyer-Watson 3D Incremental Insertion.
+//! Bowyer-Watson 法による三次元 Delaunay 挿入を実装します。
 
 use std::collections::{HashSet, VecDeque};
 
@@ -7,16 +7,13 @@ use crate::point3::Point3;
 use super::tet_mesh::TetMesh;
 use crate::predicates::{insphere, orient3d, p3};
 
-// ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────
-
 fn morton_code(x: f64, y: f64, z: f64) -> u64 {
     let ix = ((x.clamp(0.0, 1.0)) * 1023.0) as u64;
     let iy = ((y.clamp(0.0, 1.0)) * 1023.0) as u64;
     let iz = ((z.clamp(0.0, 1.0)) * 1023.0) as u64;
 
     fn spread(mut v: u64) -> u64 {
-        v &= 0x3FF; // 10 bit
+        v &= 0x3FF;
         v = (v | (v << 16)) & 0x030000FF;
         v = (v | (v << 8)) & 0x0300F00F;
         v = (v | (v << 4)) & 0x030C30C3;
@@ -59,8 +56,6 @@ pub fn brio_sort(points: &[Point3]) -> Vec<usize> {
         .map(|p| morton_code((p.x - min_x) / dx, (p.y - min_y) / dy, (p.z - min_z) / dz))
         .collect();
 
-    // ...
-
     let mut seed: u64 = 0xDEAD_BEEF_CAFE_BABE;
     let lcg_next = |s: &mut u64| -> u64 {
         *s = s
@@ -87,9 +82,6 @@ pub fn brio_sort(points: &[Point3]) -> Vec<usize> {
 
     rounds.into_iter().flatten().collect()
 }
-
-// ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────
 
 fn face_verts(tet: &[usize; 4], fi: usize) -> [usize; 3] {
     match fi {
@@ -142,7 +134,7 @@ pub fn build_delaunay_cavity(mesh: &TetMesh, start_tet: usize, point: &Point3) -
     cavity
 }
 
-/// Extract oriented boundary faces of the current Delaunay cavity.
+/// 現在の Delaunay 空洞から向きをそろえた境界面を抽出します。
 pub fn extract_cavity_boundary(
     mesh: &TetMesh,
     cavity: &[usize],
@@ -183,7 +175,7 @@ pub fn extract_cavity_boundary(
     boundary
 }
 
-/// Insert a vertex into the tetrahedral mesh by cavity retriangulation.
+/// 空洞の再三角形分割により四面体メッシュへ頂点を挿入します。
 pub fn insert_vertex(mesh: &mut TetMesh, point: Point3) -> Result<usize, String> {
     let containing = mesh
         .locate_point(&point)
@@ -388,14 +380,11 @@ pub fn build_delaunay(points: &[Point3]) -> Result<TetMesh, String> {
         }
     }
 
-    // compact
     mesh.compact_tombstones();
 
-    //
     let n_pts = points.len();
     let brio_to_original: Vec<usize> = insertion_order.clone();
 
-    //
     let mut new_nodes = vec![Point3::new(0.0, 0.0, 0.0); n_pts];
     let mut internal_to_original = vec![0usize; n_pts];
     for (k, &orig_idx) in brio_to_original.iter().enumerate() {

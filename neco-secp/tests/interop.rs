@@ -1,4 +1,4 @@
-//! ATProto signature interop tests (ES256K / secp256k1).
+//! ATProto の ES256K と secp256k1 の相互運用検査。
 
 use neco_json::{parse, JsonValue};
 use neco_secp::{EcdsaSignature, PublicKey, SecretKey};
@@ -6,8 +6,6 @@ use neco_sha2::Sha256;
 
 const SIGNATURE_FIXTURES: &str = include_str!("atproto-interop/signature-fixtures.json");
 const W3C_DIDKEY_K256: &str = include_str!("atproto-interop/w3c_didkey_K256.json");
-
-// --- base64 decoder ---
 
 fn decode_base64(input: &str) -> Vec<u8> {
     const TABLE: [u8; 128] = {
@@ -46,8 +44,6 @@ fn decode_base64(input: &str) -> Vec<u8> {
     out
 }
 
-// --- base58btc decoder ---
-
 fn decode_base58btc(input: &str) -> Vec<u8> {
     const ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -76,8 +72,6 @@ fn decode_base58btc(input: &str) -> Vec<u8> {
     result
 }
 
-// --- hex helpers ---
-
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut s = String::with_capacity(bytes.len() * 2);
@@ -87,8 +81,6 @@ fn hex_encode(bytes: &[u8]) -> String {
     }
     s
 }
-
-// --- JSON helpers ---
 
 fn json_str<'a>(value: &'a JsonValue, key: &str) -> &'a str {
     value
@@ -104,7 +96,7 @@ fn json_bool(value: &JsonValue, key: &str) -> bool {
         .unwrap_or_else(|| panic!("missing or non-bool key: {key}"))
 }
 
-/// publicKeyMultibase (z + base58btc) → raw 33-byte SEC1 compressed public key
+/// `z` 接頭辞の base58btc 値を 33 バイトの圧縮 SEC1 公開鍵として読む。
 fn pubkey_from_multibase(multibase: &str) -> PublicKey {
     let without_prefix = multibase
         .strip_prefix('z')
@@ -119,7 +111,7 @@ fn pubkey_from_multibase(multibase: &str) -> PublicKey {
     PublicKey::from_sec1_bytes(&decoded).expect("invalid secp256k1 public key")
 }
 
-/// did:key (multicodec varint 0xe7 0x01 for secp256k1) → 33-byte SEC1 compressed public key
+/// secp256k1 のマルチコーデック接頭辞 `0xe7, 0x01` を持つ did:key を圧縮 SEC1 公開鍵として読む。
 fn pubkey_from_did_key(did_key: &str) -> PublicKey {
     let multibase = did_key
         .strip_prefix("did:key:")
@@ -133,7 +125,6 @@ fn pubkey_from_did_key(did_key: &str) -> PublicKey {
         "did:key decoded too short: {}",
         decoded.len()
     );
-    // secp256k1 multicodec: varint 0xe7 0x01
     assert_eq!(
         decoded[0], 0xe7,
         "expected secp256k1 multicodec byte 0, got 0x{:02x}",
@@ -178,18 +169,14 @@ fn atproto_signature_verification_k256() {
             .unwrap_or(&[]);
         let is_der = tags.iter().any(|t| t.as_str() == Some("der-encoded"));
 
-        // 公開鍵: publicKeyMultibase は z + base58btc(33-byte SEC1)
         let pubkey = pubkey_from_multibase(multibase);
 
-        // メッセージ → SHA-256
         let message = decode_base64(message_b64);
         let digest = Sha256::digest(&message);
 
-        // 署名のデコード
         let sig_bytes = decode_base64(sig_b64);
 
         if is_der {
-            // DER-encoded: 64 バイトではないので from_bytes に渡せない → 不正扱い
             assert_ne!(
                 sig_bytes.len(),
                 64,
@@ -235,27 +222,19 @@ fn w3c_didkey_k256_private_to_public() {
         let priv_hex = json_str(fixture, "privateKeyBytesHex");
         let public_did_key = json_str(fixture, "publicDidKey");
 
-        // did:key から ECDSA 公開鍵を抽出（multicodec prefix 付き）
         let expected_pk = pubkey_from_did_key(public_did_key);
         let expected_sec1 = expected_pk.to_sec1_bytes();
 
-        // 秘密鍵 → 公開鍵
-        // neco_secp::SecretKey::public_key() は Schnorr 用に even-y 正規化するため、
-        // ECDSA 公開鍵と parity が異なる場合がある。
-        // x 座標（SEC1 の先頭バイト以降 32 バイト）が一致すれば同じ点。
         let sk = SecretKey::from_hex(priv_hex).expect("invalid secret key hex");
         let pk = sk.public_key().expect("failed to derive public key");
         let pk_sec1 = pk.to_sec1_bytes();
 
-        // x 座標の一致を検証（先頭 1 バイトは圧縮 prefix 02/03）
         assert_eq!(
             hex_encode(&pk_sec1[1..]),
             hex_encode(&expected_sec1[1..]),
             "x-coordinate mismatch for private key {priv_hex}"
         );
 
-        // did:key から取得した公開鍵で ECDSA 署名検証が可能なことを確認
-        // （鍵自体が有効な secp256k1 点であること）
         let _ = PublicKey::from_sec1_bytes(&expected_sec1).expect("did:key pubkey should be valid");
     }
 }

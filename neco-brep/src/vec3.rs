@@ -39,7 +39,7 @@ pub fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
     length(sub(a, b))
 }
 
-/// Returns zero vector unchanged.
+/// ベクトルを長さ 1 に正規化します。零ベクトルはそのまま返します。
 #[inline]
 pub fn normalized(a: [f64; 3]) -> [f64; 3] {
     let len = length(a);
@@ -66,11 +66,7 @@ pub fn neg(a: [f64; 3]) -> [f64; 3] {
     [-a[0], -a[1], -a[2]]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Basis construction
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Returns an orthonormal basis (e1, e2) perpendicular to `axis`.
+/// 軸に垂直な正規直交基底を返します。零ベクトルでは零ベクトルの組になります。
 pub fn orthonormal_basis(axis: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     let candidate = if axis[0].abs() < 0.9 {
         [1.0, 0.0, 0.0]
@@ -82,11 +78,7 @@ pub fn orthonormal_basis(axis: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     (e1, e2)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quadratic solver
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Real roots of at^2 + bt + c = 0 within [0,1], sorted.
+/// 区間内にある二次方程式の実根を昇順で返します。
 pub fn solve_quadratic_01(a: f64, b: f64, c: f64) -> Vec<f64> {
     let disc = b * b - 4.0 * a * c;
     if disc < 0.0 {
@@ -111,10 +103,6 @@ pub fn solve_quadratic_01(a: f64, b: f64, c: f64) -> Vec<f64> {
     roots.sort_by(|a, b| a.total_cmp(b));
     roots
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Newton's method
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Find a root within [t_lo, t_hi] using Newton's method.
 pub fn newton_root(
@@ -178,10 +166,6 @@ pub fn newton_refine_01(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tetrahedron
-// ─────────────────────────────────────────────────────────────────────────────
-
 /// Signed volume of a tetrahedron.
 pub fn tet_signed_volume(nodes: &[[f64; 3]], tet: &[usize; 4]) -> f64 {
     let a = nodes[tet[0]];
@@ -225,10 +209,6 @@ pub fn tet_aspect_ratio(nodes: &[[f64; 3]], tet: &[usize; 4]) -> f64 {
     let r_in = 3.0 * vol / sum_area;
     max_edge / r_in
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Triangle
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Area of a triangle.
 pub fn tri_area(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
@@ -303,7 +283,6 @@ mod tests {
 
     #[test]
     fn test_solve_quadratic_01() {
-        // t^2 - t = 0 => t = 0, 1
         let roots = solve_quadratic_01(1.0, -1.0, 0.0);
         assert_eq!(roots.len(), 2);
         assert!((roots[0]).abs() < 1e-10);

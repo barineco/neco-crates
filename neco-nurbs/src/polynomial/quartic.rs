@@ -1,8 +1,8 @@
-//! Quartic solver (Ferrari's method with trigonometric resolvent cubic).
+//! 実係数の二次・三次・四次多項式の実根を求めます。
 
 const EPS: f64 = 1e-12;
 
-/// Solve quadratic ax^2 + bx + c = 0, returning all real roots.
+/// `a*x² + b*x + c` の相異なる実根を昇順で返します。重根は一つだけ返します。
 pub fn solve_quadratic(a: f64, b: f64, c: f64) -> Vec<f64> {
     if a.abs() < EPS {
         if b.abs() < EPS {
@@ -18,7 +18,6 @@ pub fn solve_quadratic(a: f64, b: f64, c: f64) -> Vec<f64> {
         return vec![-b / (2.0 * a)];
     }
     let sqrt_disc = disc.sqrt();
-    // Compute the larger-magnitude root first for numerical stability
     let q = -0.5 * (b + b.signum() * sqrt_disc);
     let x1 = q / a;
     let x2 = c / q;
@@ -29,8 +28,7 @@ pub fn solve_quadratic(a: f64, b: f64, c: f64) -> Vec<f64> {
     }
 }
 
-/// Solve cubic coeffs[3]*x^3 + coeffs[2]*x^2 + coeffs[1]*x + coeffs[0] = 0.
-/// Uses Vieta's trigonometric method.
+/// 定数項から昇べき順の係数を受け取り、三次多項式の実根だけを相異なる値で返します。重根は一つにまとめます。
 pub fn solve_cubic(coeffs: [f64; 4]) -> Vec<f64> {
     let [a0, a1, a2, a3] = coeffs;
     if a3.abs() < EPS {
@@ -40,7 +38,6 @@ pub fn solve_cubic(coeffs: [f64; 4]) -> Vec<f64> {
     let c = a1 / a3;
     let d = a0 / a3;
 
-    // Depressed cubic: t^3 + pt + q = 0  (x = t - b/3)
     let p = c - b * b / 3.0;
     let q = d - b * c / 3.0 + 2.0 * b * b * b / 27.0;
     let shift = -b / 3.0;
@@ -48,7 +45,6 @@ pub fn solve_cubic(coeffs: [f64; 4]) -> Vec<f64> {
     let disc = -4.0 * p * p * p - 27.0 * q * q;
 
     if disc > EPS {
-        // Three real roots
         let m = (-p / 3.0).sqrt();
         let theta = (-q / (2.0 * m * m * m)).clamp(-1.0, 1.0).acos() / 3.0;
         let two_m = 2.0 * m;
@@ -59,17 +55,14 @@ pub fn solve_cubic(coeffs: [f64; 4]) -> Vec<f64> {
         ]
     } else if disc.abs() <= EPS {
         if q.abs() < EPS {
-            // Triple root
             vec![shift]
         } else {
             let u = cbrt(-q / 2.0);
-            // Single + double root
             let r1 = 2.0 * u + shift;
             let r2 = -u + shift;
             vec![r1, r2]
         }
     } else {
-        // One real root (Cardano's formula)
         let s = -q / 2.0;
         let t = (q * q / 4.0 + p * p * p / 27.0).sqrt();
         let u = cbrt(s + t);
@@ -82,7 +75,7 @@ fn cbrt(x: f64) -> f64 {
     x.signum() * x.abs().cbrt()
 }
 
-/// Solve quartic coeffs[4]*x^4 + ... + coeffs[0] = 0 using Ferrari's method.
+/// 定数項から昇べき順の係数を受け取り、四次多項式の実根だけを相異なる値で返します。重根は一つにまとめます。
 pub fn solve_quartic(coeffs: [f64; 5]) -> Vec<f64> {
     let [a0, a1, a2, a3, a4] = coeffs;
     if a4.abs() < EPS {
@@ -93,7 +86,6 @@ pub fn solve_quartic(coeffs: [f64; 5]) -> Vec<f64> {
     let d = a1 / a4;
     let e = a0 / a4;
 
-    // Depressed quartic: y^4 + py^2 + qy + r = 0  (x = y - b/4)
     let b2 = b * b;
     let b3 = b2 * b;
     let b4 = b2 * b2;
@@ -103,7 +95,6 @@ pub fn solve_quartic(coeffs: [f64; 5]) -> Vec<f64> {
     let shift = -b / 4.0;
 
     if q.abs() < EPS {
-        // Biquadratic: solve u = y^2 as a quadratic
         let u_roots = solve_quadratic(1.0, p, r);
         let mut roots = Vec::new();
         for u in u_roots {
@@ -117,7 +108,6 @@ pub fn solve_quartic(coeffs: [f64; 5]) -> Vec<f64> {
         }
         refine_and_return(coeffs, roots)
     } else {
-        // Resolvent cubic
         let cubic_coeffs = [p * r / 2.0 - q * q / 8.0, -r, -p / 2.0, 1.0];
         let cubic_roots = solve_cubic(cubic_coeffs);
         let z0 = cubic_roots.into_iter().fold(f64::NEG_INFINITY, f64::max);
@@ -138,7 +128,6 @@ pub fn solve_quartic(coeffs: [f64; 5]) -> Vec<f64> {
                 roots.extend(solve_quadratic(1.0, 0.0, z0 + sqrt_inner));
             }
         } else {
-            // Factor into two quadratics
             let half_q_over_s = q / (2.0 * s);
             roots.extend(solve_quadratic(1.0, s, z0 - half_q_over_s));
             roots.extend(solve_quadratic(1.0, -s, z0 + half_q_over_s));
@@ -190,7 +179,6 @@ mod tests {
 
     #[test]
     fn cubic_three_real_roots() {
-        // (x-1)(x-2)(x-3)
         let coeffs = [-6.0, 11.0, -6.0, 1.0];
         let roots = solve_cubic(coeffs);
         assert_eq!(roots.len(), 3);
@@ -199,7 +187,6 @@ mod tests {
 
     #[test]
     fn cubic_one_real_root() {
-        // x^3 + x + 1 = 0, discriminant < 0
         let coeffs = [1.0, 1.0, 0.0, 1.0];
         let roots = solve_cubic(coeffs);
         assert_eq!(roots.len(), 1);
@@ -208,7 +195,6 @@ mod tests {
 
     #[test]
     fn quartic_four_distinct_roots() {
-        // (x-1)(x-2)(x-3)(x-4)
         let coeffs = [24.0, -50.0, 35.0, -10.0, 1.0];
         let roots = solve_quartic(coeffs);
         assert_eq!(roots.len(), 4, "expected 4 roots: {roots:?}");
@@ -224,7 +210,6 @@ mod tests {
 
     #[test]
     fn quartic_double_roots() {
-        // (x-1)^2 (x-2)^2
         let coeffs = [4.0, -12.0, 13.0, -6.0, 1.0];
         let roots = solve_quartic(coeffs);
         check_quartic_residual(&coeffs, &roots, 1e-10);
@@ -236,7 +221,6 @@ mod tests {
 
     #[test]
     fn quartic_two_real_two_complex() {
-        // x^4 - 5x^2 + 4 = (x-1)(x+1)(x-2)(x+2)
         let coeffs = [4.0, 0.0, -5.0, 0.0, 1.0];
         let roots = solve_quartic(coeffs);
         assert_eq!(roots.len(), 4, "expected 4 roots: {roots:?}");
@@ -253,7 +237,6 @@ mod tests {
 
     #[test]
     fn quartic_ray_torus_intersection() {
-        // Ray-torus intersection with R=1.0, r=0.3
         let coeffs = [8.1081, -23.28, 21.82, -8.0, 1.0];
         let roots = solve_quartic(coeffs);
         assert_eq!(
@@ -274,7 +257,6 @@ mod tests {
 
     #[test]
     fn quartic_grazing_angle() {
-        // Near-zero discriminant: (x^2 - 1)^2
         let coeffs = [1.0, 0.0, -2.0, 0.0, 1.0];
         let roots = solve_quartic(coeffs);
         check_quartic_residual(&coeffs, &roots, 1e-10);
@@ -286,7 +268,6 @@ mod tests {
 
     #[test]
     fn quartic_extreme_ratio_small() {
-        // r/R < 0.01: R=10.0, r=0.05
         let big_r = 10.0_f64;
         let small_r = 0.05_f64;
         let k = big_r * big_r - small_r * small_r;
@@ -307,7 +288,6 @@ mod tests {
 
     #[test]
     fn quartic_extreme_ratio_large() {
-        // r/R > 0.9: R=1.0, r=0.95
         let k = 0.0975_f64;
         let c4 = 1.0;
         let c3 = -8.0;

@@ -1,4 +1,4 @@
-//! k-means++ initialization + Lloyd's iteration.
+//! 決定的な最遠点初期化と Lloyd 反復による k-means クラスタリングを提供します。
 use core::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,33 +30,31 @@ impl fmt::Display for KmeansError {
 
 impl std::error::Error for KmeansError {}
 
-/// Result of k-means clustering.
+/// k-means の結果です。
 #[derive(Debug, Clone)]
 pub struct KmeansResult {
-    /// Cluster assignment for each input point (0-based).
+    /// 各入力点のクラスタ番号を 0 始まりで格納します。
     pub assignments: Vec<u32>,
-    /// Centroid of each cluster, flat k × d (row-major).
+    /// 各クラスタの重心を行優先の平坦な配列で格納します。
     pub centroids: Vec<f64>,
-    /// Dimensionality of each point / centroid.
+    /// 各入力点と重心の次元数です。
     pub dim: usize,
-    /// Number of iterations performed.
+    /// 実行した反復回数です。
     pub iterations: usize,
 }
 
 impl KmeansResult {
-    /// Returns the centroid of cluster `i` as a slice of length `dim`.
+    /// クラスタ `i` の重心を長さ `dim` のスライスで返します。
     pub fn centroid(&self, i: usize) -> &[f64] {
         &self.centroids[i * self.dim..(i + 1) * self.dim]
     }
 
-    /// Returns the number of clusters.
     pub fn k(&self) -> usize {
         self.centroids.len() / self.dim
     }
 }
 
-/// Cluster `data` (flat row-major, n points × `dim` dimensions) into `k`
-/// groups using k-means++ initialization and Lloyd's iteration.
+/// 行優先の入力から k-means を実行し、クラスタ番号を 0 始まりで返します。初期化は平均に最も近い最初の点を選び、その後は既選択点から最も遠い点を順に選ぶ決定的な方法です。次元が正でない、入力が次元数で割り切れない、入力が空、クラスタ数が点数の範囲外、または割り当て番号の表現範囲を超える場合は失敗します。
 pub fn kmeans(
     data: &[f64],
     dim: usize,
@@ -92,14 +90,12 @@ pub fn kmeans(
     for iteration in 0..max_iter {
         iter_count = iteration + 1;
 
-        // Assignment step
         let changed = assign_step(data, dim, &centroids, &mut assignments);
 
         if !changed && iteration > 0 {
             break;
         }
 
-        // Update step
         accum.fill(0.0);
         counts.fill(0);
 
@@ -121,7 +117,6 @@ pub fn kmeans(
                     cent[j] = accum[c * dim + j] / cnt;
                 }
             }
-            // counts[c] == 0: keep previous centroid (no write)
         }
     }
 
@@ -133,13 +128,10 @@ pub fn kmeans(
     })
 }
 
-/// k-means++ initialization: select k initial centroids with
-/// distance-weighted sampling (deterministic: max-min).
 fn kmeanspp_init(data: &[f64], d: usize, k: usize) -> Vec<f64> {
     let n = data.len() / d;
     let mut centroids = Vec::with_capacity(k * d);
 
-    // Pick first centroid: closest to the mean
     let mut mean = vec![0.0f64; d];
     for pt in data.chunks_exact(d) {
         for j in 0..d {
@@ -160,7 +152,6 @@ fn kmeanspp_init(data: &[f64], d: usize, k: usize) -> Vec<f64> {
         .unwrap();
     centroids.extend_from_slice(&data[first * d..(first + 1) * d]);
 
-    // Distance-weighted selection (deterministic max-min)
     let mut min_dists = vec![f64::INFINITY; n];
 
     for c_idx in 1..k {
@@ -182,8 +173,6 @@ fn kmeanspp_init(data: &[f64], d: usize, k: usize) -> Vec<f64> {
     centroids
 }
 
-/// Assignment step: find nearest centroid for each point.
-/// Returns `true` if any assignment changed.
 #[cfg(not(feature = "parallel"))]
 fn assign_step(data: &[f64], d: usize, centroids: &[f64], assignments: &mut [u32]) -> bool {
     let mut changed = false;
@@ -215,7 +204,6 @@ fn assign_step(data: &[f64], d: usize, centroids: &[f64], assignments: &mut [u32
     changed.load(Ordering::Relaxed)
 }
 
-/// Find the index of the nearest centroid to `point`.
 fn nearest_centroid(point: &[f64], centroids: &[f64]) -> u32 {
     let d = point.len();
     debug_assert!(centroids.len() % d == 0);
@@ -231,7 +219,6 @@ fn nearest_centroid(point: &[f64], centroids: &[f64]) -> u32 {
     best
 }
 
-/// Squared Euclidean distance between two equal-length slices.
 #[inline]
 fn dist_sq(a: &[f64], b: &[f64]) -> f64 {
     debug_assert_eq!(a.len(), b.len());

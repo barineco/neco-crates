@@ -1,12 +1,11 @@
 use crate::illuminant::N_SPECTRAL;
 
-/// K/S spectrum representation (164 bytes per color).
+/// 波長ごとの Kubelka-Munk 比 `K/S` です。
 #[derive(Clone, Debug)]
 pub struct KsSpectrum {
     pub ks: [f32; N_SPECTRAL],
 }
 
-// Manual serde impl: derive not available for [f32; N] where N > 32.
 #[cfg(feature = "serde")]
 impl serde::Serialize for KsSpectrum {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -25,13 +24,9 @@ impl<'de> serde::Deserialize<'de> for KsSpectrum {
     }
 }
 
-/// Upper clamp for K/S (corresponds to R ~ 0.001).
 pub(crate) const KS_MAX: f32 = 1000.0;
-
-/// Threshold for switching to Taylor expansion.
 const KS_TAYLOR_THRESHOLD: f32 = 1e-6;
 
-/// Reflectance to K/S conversion (per wavelength, KM infinite thickness).
 pub fn reflectance_to_ks(refl: &[f32; N_SPECTRAL]) -> KsSpectrum {
     let mut ks = [0.0f32; N_SPECTRAL];
     for (i, ks_i) in ks.iter_mut().enumerate().take(N_SPECTRAL) {
@@ -46,9 +41,8 @@ pub fn reflectance_to_ks(refl: &[f32; N_SPECTRAL]) -> KsSpectrum {
     KsSpectrum { ks }
 }
 
-/// K/S to reflectance (KM infinite thickness).
-///
-/// Uses Taylor expansion for K/S < 1e-6 to avoid catastrophic cancellation.
+/// 無限厚みの反射率へ復元します。比が `1000` 以上なら 0 とします。
+/// 比が `1e-6` 未満では、桁落ちを避けるテイラー展開を使います。
 pub fn ks_to_reflectance(ks: &KsSpectrum) -> [f32; N_SPECTRAL] {
     let mut refl = [0.0f32; N_SPECTRAL];
     for (i, refl_i) in refl.iter_mut().enumerate().take(N_SPECTRAL) {
@@ -56,7 +50,6 @@ pub fn ks_to_reflectance(ks: &KsSpectrum) -> [f32; N_SPECTRAL] {
         if x >= KS_MAX {
             *refl_i = 0.0;
         } else if x < KS_TAYLOR_THRESHOLD {
-            // Taylor expansion to avoid cancellation
             *refl_i = (1.0 - (2.0 * x).sqrt()).max(0.0);
         } else {
             *refl_i = (1.0 + x - (x * x + 2.0 * x).sqrt()).clamp(0.0, 1.0);
@@ -65,7 +58,7 @@ pub fn ks_to_reflectance(ks: &KsSpectrum) -> [f32; N_SPECTRAL] {
     refl
 }
 
-/// Linear interpolation in K/S space. `t` is not clamped (caller's responsibility).
+/// K/S 空間で線形補間します。`t` は丸めず、呼び出し側が範囲を管理します。
 pub fn ks_mix(a: &KsSpectrum, b: &KsSpectrum, t: f32) -> KsSpectrum {
     let mut ks = [0.0f32; N_SPECTRAL];
     let s = 1.0 - t;
@@ -75,7 +68,7 @@ pub fn ks_mix(a: &KsSpectrum, b: &KsSpectrum, t: f32) -> KsSpectrum {
     KsSpectrum { ks }
 }
 
-/// Weighted blend of multiple colors in K/S space. Weights are not normalized.
+/// K/S 空間で複数の色を重み付きで混合します。重みは正規化しません。
 pub fn ks_mix_weighted(colors: &[(&KsSpectrum, f32)]) -> KsSpectrum {
     let mut ks = [0.0f32; N_SPECTRAL];
     for (spectrum, weight) in colors {
@@ -109,7 +102,6 @@ mod tests {
 
     #[test]
     fn ks_reflectance_round_trip() {
-        // Mid-range reflectance
         let refl_in: [f32; N_SPECTRAL] = [0.5; N_SPECTRAL];
         let ks = reflectance_to_ks(&refl_in);
         let refl_out = ks_to_reflectance(&ks);
@@ -122,11 +114,9 @@ mod tests {
     fn ks_black_stability() {
         let refl_in: [f32; N_SPECTRAL] = [0.0; N_SPECTRAL];
         let ks = reflectance_to_ks(&refl_in);
-        // K/S should be clamped
         for &value in ks.ks.iter().take(N_SPECTRAL) {
             assert!(value <= KS_MAX + 1e-6);
         }
-        // Should not panic on reconstruction
         let _refl_out = ks_to_reflectance(&ks);
     }
 

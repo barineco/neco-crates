@@ -1,4 +1,4 @@
-/// Polynomial solvers (direct formulas for degree 2-4, companion matrix for higher degrees).
+/// 多項式の実根を求める関数を提供します。
 pub mod quartic;
 
 #[cfg(feature = "polynomial-highorder")]
@@ -6,10 +6,8 @@ mod companion;
 
 use quartic::{solve_cubic, solve_quadratic, solve_quartic};
 
-/// Error type for polynomial solvers.
 #[derive(Debug)]
 pub enum PolynomialError {
-    /// High-order solver unavailable (enable the `polynomial-highorder` feature).
     HighOrderNotAvailable { degree: usize },
 }
 
@@ -29,7 +27,7 @@ impl std::fmt::Display for PolynomialError {
 
 impl std::error::Error for PolynomialError {}
 
-/// Find all real roots of the polynomial coeffs[n]*x^n + ... + coeffs[1]*x + coeffs[0] = 0.
+/// 係数を定数項から昇べき順に受け取り、実根だけを相異なる値で返します。重根は一つにまとめます。係数の絶対値が `1e-12` 以下の最高次項は零とみなします。次数が 5 以上で高次求根機能が無効な場合はエラーを返します。
 pub fn solve_polynomial(coeffs: &[f64]) -> Result<Vec<f64>, PolynomialError> {
     let effective_degree = match coeffs.iter().rposition(|&c| c.abs() > 1e-12) {
         Some(i) => i,
@@ -61,7 +59,6 @@ pub fn solve_polynomial(coeffs: &[f64]) -> Result<Vec<f64>, PolynomialError> {
     }
 }
 
-/// Newton's method root refinement for a polynomial. coeffs[i] is the coefficient of x^i.
 pub fn newton_refine(coeffs: &[f64], x: f64, iterations: usize) -> f64 {
     let mut x = x;
     for _ in 0..iterations {
@@ -74,7 +71,6 @@ pub fn newton_refine(coeffs: &[f64], x: f64, iterations: usize) -> f64 {
     x
 }
 
-/// Evaluate a polynomial and its derivative simultaneously (Horner's method).
 fn eval_poly_and_deriv(coeffs: &[f64], x: f64) -> (f64, f64) {
     let n = coeffs.len();
     if n == 0 {
@@ -89,7 +85,6 @@ fn eval_poly_and_deriv(coeffs: &[f64], x: f64) -> (f64, f64) {
     (f, df)
 }
 
-/// Evaluate a polynomial using Horner's method.
 pub fn eval_poly(coeffs: &[f64], x: f64) -> f64 {
     let n = coeffs.len();
     if n == 0 {
@@ -102,7 +97,6 @@ pub fn eval_poly(coeffs: &[f64], x: f64) -> f64 {
     f
 }
 
-/// Compute the derivative polynomial. coeffs[i] is the coefficient of x^i.
 #[cfg(feature = "polynomial-highorder")]
 pub(super) fn poly_derivative(coeffs: &[f64]) -> Vec<f64> {
     if coeffs.len() <= 1 {
@@ -116,7 +110,6 @@ pub(super) fn poly_derivative(coeffs: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Approximate polynomial GCD via the Euclidean algorithm.
 #[cfg(feature = "polynomial-highorder")]
 fn poly_gcd(a: &[f64], b: &[f64]) -> Vec<f64> {
     const MAX_GCD_ITERATIONS: usize = 100;
@@ -144,7 +137,6 @@ fn poly_gcd(a: &[f64], b: &[f64]) -> Vec<f64> {
     r0
 }
 
-/// Polynomial remainder a mod b.
 #[cfg(feature = "polynomial-highorder")]
 fn poly_rem(a: &[f64], b: &[f64]) -> Vec<f64> {
     if a.len() < b.len() {
@@ -164,7 +156,6 @@ fn poly_rem(a: &[f64], b: &[f64]) -> Vec<f64> {
     trim_leading_zeros(&rem)
 }
 
-/// Strip trailing zero coefficients (highest degree).
 #[cfg(feature = "polynomial-highorder")]
 pub(super) fn trim_leading_zeros(p: &[f64]) -> Vec<f64> {
     let end = p
@@ -175,7 +166,6 @@ pub(super) fn trim_leading_zeros(p: &[f64]) -> Vec<f64> {
     p[..end].to_vec()
 }
 
-/// Compute the square-free part p / gcd(p, p').
 #[cfg(feature = "polynomial-highorder")]
 pub(super) fn poly_square_free(p: &[f64], dp: &[f64]) -> Vec<f64> {
     let g = poly_gcd(p, dp);
@@ -185,7 +175,6 @@ pub(super) fn poly_square_free(p: &[f64], dp: &[f64]) -> Vec<f64> {
     poly_exact_div(p, &g)
 }
 
-/// Exact polynomial division a / b (assumes zero remainder).
 #[cfg(feature = "polynomial-highorder")]
 fn poly_exact_div(a: &[f64], b: &[f64]) -> Vec<f64> {
     if b.is_empty() || a.len() < b.len() {
@@ -331,7 +320,6 @@ mod tests {
     #[cfg(feature = "polynomial-highorder")]
     #[test]
     fn repeated_roots() {
-        // (x-1)^4 * (x-2)^4
         let mut p1 = vec![1.0];
         for _ in 0..4 {
             let mut new = vec![0.0; p1.len() + 1];

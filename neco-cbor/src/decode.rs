@@ -6,6 +6,8 @@ use crate::{CborValue, DecodeError, DecodeErrorKind};
 
 const MAX_DEPTH: usize = 128;
 
+/// CBOR 値を 1 個だけ含む入力をデコードします。
+/// 切り詰め、深さ 128 超過、対応しない値、末尾データは `DecodeError` を返します。
 pub fn decode(input: &[u8]) -> Result<CborValue, DecodeError> {
     let mut decoder = Decoder::new(input, false);
     let value = decoder.decode_value()?;
@@ -15,6 +17,7 @@ pub fn decode(input: &[u8]) -> Result<CborValue, DecodeError> {
     Ok(value)
 }
 
+/// DAG-CBOR をデコードし、浮動小数点数、不定長値、非正準整数、無効なキーまたはタグを `DecodeError` とします。
 pub fn decode_dag(input: &[u8]) -> Result<CborValue, DecodeError> {
     let mut decoder = Decoder::new(input, true);
     let value = decoder.decode_value()?;
@@ -166,7 +169,6 @@ impl<'a> Decoder<'a> {
             20 => Ok(CborValue::Bool(false)),
             21 => Ok(CborValue::Bool(true)),
             22 => Ok(CborValue::Null),
-            // CborValue has no float variant, so floats are unsupported in both modes.
             25..=27 => Err(self.error(DecodeErrorKind::FloatNotAllowed)),
             31 => Err(self.error(DecodeErrorKind::IndefiniteLength)),
             _ => Err(self.error(DecodeErrorKind::InvalidMajorType(7))),

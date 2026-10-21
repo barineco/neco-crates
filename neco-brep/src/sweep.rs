@@ -32,7 +32,6 @@ fn correct_sweep_frames_to_profile_xy(frames: &mut [[[f64; 3]; 3]]) {
     let b0 = frames[0][1];
     let t0 = frames[0][2];
 
-    // Project X axis [1,0,0] onto the tangent-orthogonal plane to get target normal
     let x_axis = [1.0, 0.0, 0.0];
     let x_dot_t = vec3::dot(x_axis, t0);
     let proj_x = [
@@ -42,7 +41,6 @@ fn correct_sweep_frames_to_profile_xy(frames: &mut [[[f64; 3]; 3]]) {
     ];
     let proj_x_len = vec3::length(proj_x);
 
-    // Fall back to [0,1,0] if [1,0,0] is nearly parallel to tangent
     let target_n = if proj_x_len > 1e-6 {
         vec3::scale(proj_x, 1.0 / proj_x_len)
     } else {
@@ -57,7 +55,6 @@ fn correct_sweep_frames_to_profile_xy(frames: &mut [[[f64; 3]; 3]]) {
         vec3::scale(proj_y, 1.0 / proj_y_len)
     };
 
-    // Rotation angle: target_n = cos(theta)*n0 + sin(theta)*b0
     let cos_theta = vec3::dot(target_n, n0);
     let sin_theta = vec3::dot(target_n, b0);
 
@@ -65,7 +62,6 @@ fn correct_sweep_frames_to_profile_xy(frames: &mut [[[f64; 3]; 3]]) {
         return;
     }
 
-    // Apply the same tangent-axis rotation to all frames
     for frame in frames.iter_mut() {
         let old_n = frame[0];
         let old_b = frame[1];
@@ -91,7 +87,6 @@ pub fn compute_rmf(spine: &[[f64; 3]]) -> Vec<Frame> {
         return vec![];
     }
 
-    // Tangent vectors: central differences, one-sided at endpoints
     let tangents: Vec<[f64; 3]> = (0..n)
         .map(|i| {
             let t = if i == 0 {
@@ -116,18 +111,15 @@ pub fn compute_rmf(spine: &[[f64; 3]]) -> Vec<Frame> {
         binormal: b0,
     });
 
-    // Propagate frames via double reflection
     for i in 0..n - 1 {
         let prev = &frames[i];
         let ti = prev.tangent;
         let ri = prev.normal;
         let ti1 = tangents[i + 1];
 
-        // First reflection across spine[i] -> spine[i+1]
         let v1 = vec3::sub(spine[i + 1], spine[i]);
         let c1 = vec3::dot(v1, v1);
         if c1 < 1e-30 {
-            // Duplicate point: copy previous frame
             frames.push(Frame {
                 origin: spine[i + 1],
                 tangent: ti1,
@@ -140,7 +132,6 @@ pub fn compute_rmf(spine: &[[f64; 3]]) -> Vec<Frame> {
         let ri_l = vec3::sub(ri, vec3::scale(v1, 2.0 * vec3::dot(v1, ri) / c1));
         let ti_l = vec3::sub(ti, vec3::scale(v1, 2.0 * vec3::dot(v1, ti) / c1));
 
-        // Second reflection across ti_L -> ti+1
         let v2 = vec3::sub(ti1, ti_l);
         let c2 = vec3::dot(v2, v2);
         let ri1 = if c2 < 1e-30 {
@@ -272,10 +263,7 @@ fn initial_normal_binormal(tangent: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     (normal, vec3::normalized(binormal))
 }
 
-/// Sweep a NurbsRegion profile along a spine to produce a Shell.
-///
-/// The spine is expected as Bezier-decomposed control points.
-/// Generates one SurfaceOfSweep face per spine span.
+/// プロファイルをスパインに沿って掃引した Shell を返します。スパインはベジエ区間の制御点列です。点やプロファイル区間が不足する場合、または曲率半径がプロファイル半径を下回る場合は失敗します。
 pub fn shell_from_sweep(
     profile: &neco_nurbs::NurbsRegion,
     spine: &[[f64; 3]],
@@ -293,7 +281,6 @@ pub fn shell_from_sweep(
         return Err("profile has no Bezier spans".into());
     }
 
-    // Infer spine degree: 2 pts -> 1, otherwise largest d where (len-1) % d == 0
     let degree = if spine.len() == 2 {
         1
     } else {
@@ -329,7 +316,6 @@ pub fn shell_from_sweep(
         forward: true,
     };
 
-    // Merge all profile spans into a single side face
     let profile_degree = u32::try_from(bezier_spans[0].degree).expect("degree fits in u32");
     let n_profile_spans = u32::try_from(bezier_spans.len()).expect("span count fits in u32");
     let mut all_profile_cps: Vec<[f64; 2]> = Vec::new();
@@ -341,7 +327,6 @@ pub fn shell_from_sweep(
         all_profile_weights.extend_from_slice(&span.weights);
     }
 
-    // Merge spine span control points and frames
     let mut all_spine_cps: Vec<[f64; 3]> = Vec::new();
     let mut all_frames: Vec<[[f64; 3]; 3]> = Vec::new();
     for (i, (span_cps, [frame0, frame1])) in rmf_spans.iter().enumerate() {
@@ -356,7 +341,6 @@ pub fn shell_from_sweep(
     }
     let all_spine_weights = vec![1.0; all_spine_cps.len()];
 
-    // Align RMF initial frame with profile XY coordinate system
     correct_sweep_frames_to_profile_xy(&mut all_frames);
 
     let surface = Surface::SurfaceOfSweep {
@@ -370,7 +354,6 @@ pub fn shell_from_sweep(
         frames: all_frames,
     };
 
-    // Evaluate corner vertices for the face edge loop
     let p00 = surface.evaluate(0.0, 0.0);
     let p10 = surface.evaluate(1.0, 0.0);
     let p11 = surface.evaluate(1.0, 1.0);

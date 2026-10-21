@@ -1,4 +1,4 @@
-//! Point-in-face and point-in-shell tests via ray casting
+//! レイキャストによる面とシェルの内外判定。
 
 use crate::brep::{eval_revolution_profile, find_closest_v_on_profile, Face, Shell, Surface};
 use crate::vec3::{self, newton_root, orthonormal_basis};
@@ -6,7 +6,9 @@ use neco_nurbs::solve_quadratic;
 use neco_nurbs::NurbsSurface3D;
 
 use super::tolerance::GEO_TOL;
+/// 平面法線がレイと平行かを判定する許容差です。
 const PARALLEL_TOL: f64 = GEO_TOL;
+/// 正方向のレイ交差、包囲ボックス、およびパラメータ範囲の許容差です。
 const EPS: f64 = 1e-9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +24,6 @@ pub enum Location3D {
     Boundary(OverlapClass),
 }
 
-/// Axis-aligned ray direction
 #[derive(Debug, Clone, Copy)]
 enum RayAxis {
     X,
@@ -31,7 +32,6 @@ enum RayAxis {
 }
 
 impl RayAxis {
-    /// Unit vector in the ray direction
     fn dir(&self) -> [f64; 3] {
         match self {
             RayAxis::X => [1.0, 0.0, 0.0],
@@ -40,7 +40,6 @@ impl RayAxis {
         }
     }
 
-    /// Point on ray: origin + t * dir
     fn hit(&self, origin: &[f64; 3], t: f64) -> [f64; 3] {
         match self {
             RayAxis::X => [origin[0] + t, origin[1], origin[2]],
@@ -49,7 +48,6 @@ impl RayAxis {
         }
     }
 
-    /// Ray-direction component of a vector
     fn component(&self, v: &[f64; 3]) -> f64 {
         match self {
             RayAxis::X => v[0],
@@ -58,7 +56,6 @@ impl RayAxis {
         }
     }
 
-    /// Two perpendicular components (perp1, perp2)
     fn perp_components(&self, v: &[f64; 3]) -> (f64, f64) {
         match self {
             RayAxis::X => (v[1], v[2]),
@@ -67,7 +64,6 @@ impl RayAxis {
         }
     }
 
-    /// Check if perpendicular components are within AABB range
     fn perp_in_range(&self, origin: &[f64; 3], bb_min: &[f64; 3], bb_max: &[f64; 3]) -> bool {
         let (o1, o2) = self.perp_components(origin);
         let (min1, min2) = self.perp_components(bb_min);
@@ -76,9 +72,6 @@ impl RayAxis {
     }
 }
 
-// ────────── Ray-surface intersection helpers ──────────
-
-/// Ray-sphere intersection parameter t
 fn ray_sphere_intersect(
     ray_origin: &[f64; 3],
     center: &[f64; 3],
@@ -95,7 +88,6 @@ fn ray_sphere_intersect(
         .collect()
 }
 
-/// Ray-ellipsoid intersection parameter t
 fn ray_ellipsoid_intersect(
     ray_origin: &[f64; 3],
     center: &[f64; 3],
@@ -104,7 +96,6 @@ fn ray_ellipsoid_intersect(
     rz: f64,
     axis: RayAxis,
 ) -> Vec<f64> {
-    // Transform to scaled space and reduce to unit sphere intersection
     let o = [
         (ray_origin[0] - center[0]) / rx,
         (ray_origin[1] - center[1]) / ry,
@@ -121,7 +112,6 @@ fn ray_ellipsoid_intersect(
         .collect()
 }
 
-/// Ray-torus intersection parameter t
 fn ray_torus_intersect(
     ray_origin: &[f64; 3],
     torus_center: &[f64; 3],
@@ -132,7 +122,6 @@ fn ray_torus_intersect(
 ) -> Vec<f64> {
     let o = vec3::sub(*ray_origin, *torus_center);
 
-    // Local frame: axis -> e_y, u -> e_x, v -> e_z
     let u = if torus_axis[0].abs() < 0.9 {
         vec3::normalized(vec3::cross(*torus_axis, [1.0, 0.0, 0.0]))
     } else {
@@ -151,7 +140,6 @@ fn ray_torus_intersect(
     solve_ray_torus_quartic(&local_o, &local_d, major_radius, minor_radius)
 }
 
-/// Numerically solve ray-torus intersection
 fn solve_ray_torus_quartic(o: &[f64; 3], d: &[f64; 3], big_r: f64, small_r: f64) -> Vec<f64> {
     let f = |t: f64| -> f64 {
         let px = o[0] + t * d[0];
@@ -173,7 +161,6 @@ fn solve_ray_torus_quartic(o: &[f64; 3], d: &[f64; 3], big_r: f64, small_r: f64)
         2.0 * s * ds - 4.0 * big_r * big_r * d_planar
     };
 
-    // Sample along ray to detect sign changes
     let t_max = 2.0 * (big_r + small_r + vec3::length(*o));
     let n_samples = 100;
     let mut roots = Vec::new();
@@ -196,10 +183,6 @@ fn solve_ray_torus_quartic(o: &[f64; 3], d: &[f64; 3], big_r: f64, small_r: f64)
     roots
 }
 
-/// Ray-SurfaceOfRevolution intersection parameters.
-///
-/// Converts ray to local frame, samples v, solves circle-ray per v,
-/// detects z-residual sign changes, and refines via Newton-bisection.
 #[allow(clippy::too_many_arguments)]
 fn ray_revolution_intersect(
     ray_origin: &[f64; 3],
@@ -217,7 +200,6 @@ fn ray_revolution_intersect(
     let axis_n = vec3::normalized(*axis_vec);
     let ray_dir = ray_axis.dir();
 
-    // Transform to local frame
     let local_ox = vec3::dot(o, *frame_u);
     let local_oy = vec3::dot(o, *frame_v);
     let local_oz = vec3::dot(o, axis_n);
@@ -226,10 +208,8 @@ fn ray_revolution_intersect(
     let local_dy = vec3::dot(ray_dir, *frame_v);
     let local_dz = vec3::dot(ray_dir, axis_n);
 
-    // z(t) = oz + dz*t
     let z_ray = |t: f64| -> f64 { local_oz + local_dz * t };
 
-    // Estimate r,z range of profile and build bounding sphere
     let n_sample_bound = 32;
     let mut r_max: f64 = 0.0;
     let mut z_min = f64::INFINITY;
@@ -248,12 +228,10 @@ fn ray_revolution_intersect(
         z_max = z_max.max(z);
     }
 
-    // Bounding sphere: center (0, 0, z_mid), radius = sqrt(r_max^2 + half_z^2)
     let z_mid = (z_min + z_max) * 0.5;
     let half_z = (z_max - z_min) * 0.5;
     let bound_r = (r_max * r_max + half_z * half_z).sqrt() * 1.1 + 1e-6;
 
-    // Intersection interval with bounding sphere
     let o_shifted_z = local_oz - z_mid;
     let oo = local_ox * local_ox + local_oy * local_oy + o_shifted_z * o_shifted_z;
     let od = local_ox * local_dx + local_oy * local_dy + o_shifted_z * local_dz;
@@ -271,24 +249,19 @@ fn ray_revolution_intersect(
         return Vec::new();
     }
 
-    // Compute t candidates for each v sample
-    // Circle-ray: (ox+dx*t)^2 + (oy+dy*t)^2 = r(v)^2
     let a_coeff = local_dx * local_dx + local_dy * local_dy;
     let b_half = local_ox * local_dx + local_oy * local_dy;
     let c_base = local_ox * local_ox + local_oy * local_oy;
 
-    // For each v sample, solve circle intersection for t, detect z-residual sign changes
     let n_v_samples: usize = 16;
     let n_prof = n_profile_spans as usize;
 
     let mut roots: Vec<f64> = Vec::new();
 
-    // Process each span independently
     for span_idx in 0..n_prof {
         let v_lo = span_idx as f64 / n_prof as f64;
         let v_hi = (span_idx + 1) as f64 / n_prof as f64;
 
-        // Special case: ray passes through axis (r ~ 0)
         if a_coeff.abs() < 1e-15 && c_base.sqrt() < 1e-8 && local_dz.abs() > 1e-15 {
             for iv in 0..=n_v_samples {
                 let v = v_lo + (v_hi - v_lo) * iv as f64 / n_v_samples as f64;
@@ -308,9 +281,8 @@ fn ray_revolution_intersect(
             }
         }
 
-        // Scan v for each sign (-1, +1), detect z_residual sign changes
         for &sign in &[-1.0_f64, 1.0] {
-            let mut prev: Option<(f64, f64, f64)> = None; // (v, t, z_residual)
+            let mut prev: Option<(f64, f64, f64)> = None;
 
             for iv in 0..=n_v_samples {
                 let v = v_lo + (v_hi - v_lo) * iv as f64 / n_v_samples as f64;
@@ -347,7 +319,6 @@ fn ray_revolution_intersect(
 
                 if let Some((prev_v, prev_t, prev_res)) = prev {
                     if prev_res * z_residual < 0.0 && t_cand > EPS && prev_t > EPS {
-                        // Sign change detected -> refine via Newton-bisection
                         let v_lo_bracket = prev_v;
                         let v_hi_bracket = v;
                         if let Some(root_t) = refine_revolution_root(
@@ -380,14 +351,11 @@ fn ray_revolution_intersect(
         }
     }
 
-    // Deduplicate and filter positive only
     roots.sort_by(|a, b| a.total_cmp(b));
     roots.dedup_by(|a, b| (*a - *b).abs() < 1e-8);
     roots.into_iter().filter(|&t| t > EPS).collect()
 }
 
-/// Newton-bisection refinement for revolution intersection.
-/// Given a bracket [v_lo, v_hi] with z_residual sign change, find precise (t, v).
 #[allow(clippy::too_many_arguments)]
 fn refine_revolution_root(
     _ox: f64,
@@ -436,12 +404,10 @@ fn refine_revolution_root(
     let (_, res_lo) = z_residual_at_v(v_lo)?;
     let (_, res_hi) = z_residual_at_v(v_hi)?;
 
-    // Verify bracket condition (same sign -> cannot refine)
     if res_lo * res_hi > 0.0 {
         return None;
     }
 
-    // Normalize so res_lo < 0
     if res_lo > 0.0 {
         std::mem::swap(&mut v_lo, &mut v_hi);
     }
@@ -466,8 +432,6 @@ fn refine_revolution_root(
     z_residual_at_v(v_mid).map(|(t, _)| t)
 }
 
-/// Test if a point on SurfaceOfRevolution is inside the face boundary.
-/// Inverse-projects to (theta, v) parameter space and uses 2D ray casting.
 #[allow(clippy::too_many_arguments)]
 fn point_in_face_revolution(
     p: &[f64; 3],
@@ -482,7 +446,6 @@ fn point_in_face_revolution(
     profile_degree: u32,
     n_profile_spans: u32,
 ) -> bool {
-    // Full-revolution surface with single seam edge -> entire face is valid
     if face.loop_edges.len() == 1 {
         let edge = &shell.edges[face.loop_edges[0].edge_id];
         if edge.v_start == edge.v_end {
@@ -492,14 +455,12 @@ fn point_in_face_revolution(
 
     let axis_n = vec3::normalized(*axis_vec);
 
-    // 3D -> (theta, v) conversion
     let to_theta_v = |pt: &[f64; 3]| -> (f64, f64) {
         let q = vec3::sub(*pt, *center);
         let qu = vec3::dot(q, *frame_u);
         let qv = vec3::dot(q, *frame_v);
         let theta = qv.atan2(qu);
 
-        // v: find closest profile parameter via Newton
         let rho = (qu * qu + qv * qv).sqrt();
         let z = vec3::dot(q, axis_n);
 
@@ -515,7 +476,6 @@ fn point_in_face_revolution(
         (theta, v)
     };
 
-    // Project face loop vertices to (theta, v) space
     let mut raw_poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -526,7 +486,6 @@ fn point_in_face_revolution(
         };
         raw_poly.push(to_theta_v(&shell.vertices[vid]));
 
-        // Sample curved or clipped line edges so trim boundaries contribute to the polygon.
         if matches!(
             &edge.curve,
             crate::brep::Curve3D::Arc { .. } | crate::brep::Curve3D::Line { .. }
@@ -550,7 +509,6 @@ fn point_in_face_revolution(
         return false;
     }
 
-    // Unwrap angles for continuity
     let ref_theta = raw_poly[0].0;
     let unwrap_angle = |angle: f64, reference: f64| -> f64 {
         let mut d = angle - reference;
@@ -574,7 +532,6 @@ fn point_in_face_revolution(
     ray_cast_2d((p_theta, p_v), &poly)
 }
 
-/// Ray-infinite-cylinder intersection parameter t
 fn ray_cylinder_intersect(
     ray_origin: &[f64; 3],
     cyl_origin: &[f64; 3],
@@ -588,9 +545,8 @@ fn ray_cylinder_intersect(
     let d_dot_a = vec3::dot(d, *cyl_axis);
     let o_dot_a = vec3::dot(o, *cyl_axis);
 
-    // d_perp = d - (d·a)*a
     let d_perp = vec3::sub(d, vec3::scale(*cyl_axis, d_dot_a));
-    // o_perp = o - (o·a)*a
+
     let o_perp = vec3::sub(o, vec3::scale(*cyl_axis, o_dot_a));
 
     let a_coeff = vec3::dot(d_perp, d_perp);
@@ -603,7 +559,6 @@ fn ray_cylinder_intersect(
         .collect()
 }
 
-/// Ray-infinite-cone intersection parameter t
 fn ray_cone_intersect(
     ray_origin: &[f64; 3],
     cone_origin: &[f64; 3],
@@ -628,7 +583,6 @@ fn ray_cone_intersect(
 
     let ts = solve_quadratic(a_coeff, b_coeff, c_coeff);
 
-    // Cone extends only in axis direction from apex -> q*a > 0
     ts.into_iter()
         .filter(|&t| {
             t > EPS && {
@@ -640,9 +594,6 @@ fn ray_cone_intersect(
         .collect()
 }
 
-// ────────── Point-in-face for curved surfaces ──────────
-
-/// Test if a point on a cylinder is within the face boundary.
 fn point_in_face_cylinder(
     p: &[f64; 3],
     face: &Face,
@@ -654,15 +605,12 @@ fn point_in_face_cylinder(
     let q = vec3::sub(*p, *cyl_origin);
     let s = vec3::dot(q, *cyl_axis);
 
-    // Collect s range from face boundary vertices
     let (s_min, s_max) = face_s_range(face, shell, cyl_origin, cyl_axis);
 
     if is_full_rotation_face(face, shell) {
-        // Full-revolution: s-range check only
         return s >= s_min - EPS && s <= s_max + EPS;
     }
 
-    // Partial revolution: 2D ray cast in (theta, s) space
     let (u_basis, v_basis) = orthonormal_basis(*cyl_axis);
     let theta = compute_theta(&q, cyl_axis, &u_basis, &v_basis);
 
@@ -671,7 +619,6 @@ fn point_in_face_cylinder(
     )
 }
 
-/// Test if a point on a cone is within the face boundary.
 fn point_in_face_cone(
     p: &[f64; 3],
     face: &Face,
@@ -704,8 +651,6 @@ fn point_in_face_cone(
     )
 }
 
-/// Test if a point on a sphere is within the face boundary.
-/// Builds a spherical polygon via Arc sampling, then projects to tangent plane for 2D ray cast.
 fn point_in_face_sphere(
     p: &[f64; 3],
     face: &Face,
@@ -715,7 +660,6 @@ fn point_in_face_sphere(
 ) -> bool {
     let q = vec3::normalized(vec3::sub(*p, *center));
 
-    // Build polygon on unit sphere by sampling Arc edges
     let mut poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -726,7 +670,6 @@ fn point_in_face_sphere(
         };
         poly.push(vec3::normalized(vec3::sub(shell.vertices[vid], *center)));
 
-        // Sample Arc edges at intermediate points
         if let crate::brep::Curve3D::Arc { .. } = &edge.curve {
             let (t0, t1) = edge.curve.param_range();
             let n_samples = 16;
@@ -746,8 +689,6 @@ fn point_in_face_sphere(
     point_in_spherical_polygon(&q, &poly)
 }
 
-/// Test if a point on an ellipsoid is within the face boundary.
-/// Transforms to scaled unit-sphere space.
 fn point_in_face_ellipsoid(
     p: &[f64; 3],
     face: &Face,
@@ -763,7 +704,6 @@ fn point_in_face_ellipsoid(
         (p[2] - center[2]) / rz,
     ]);
 
-    // Build polygon on scaled unit sphere by sampling Arc edges
     let mut poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -779,7 +719,6 @@ fn point_in_face_ellipsoid(
             (v[2] - center[2]) / rz,
         ]));
 
-        // Sample Arc edges at intermediate points
         if let crate::brep::Curve3D::Arc { .. } = &edge.curve {
             let (t0, t1) = edge.curve.param_range();
             let n_samples = 16;
@@ -803,13 +742,11 @@ fn point_in_face_ellipsoid(
     point_in_spherical_polygon(&q, &poly)
 }
 
-/// Spherical polygon containment test via tangent-plane projection + 2D ray cast.
 fn point_in_spherical_polygon(q: &[f64; 3], poly: &[[f64; 3]]) -> bool {
     if poly.len() < 3 {
         return false;
     }
 
-    // Reject if polygon centroid is on the opposite hemisphere from q
     let n = poly.len() as f64;
     let centroid = poly
         .iter()
@@ -819,7 +756,6 @@ fn point_in_spherical_polygon(q: &[f64; 3], poly: &[[f64; 3]]) -> bool {
         return false;
     }
 
-    // Build orthonormal basis for the tangent plane at q
     let u = if q[0].abs() < 0.9 {
         vec3::normalized(vec3::cross(*q, [1.0, 0.0, 0.0]))
     } else {
@@ -836,8 +772,6 @@ fn point_in_spherical_polygon(q: &[f64; 3], poly: &[[f64; 3]]) -> bool {
     ray_cast_2d(q_2d, &poly_2d)
 }
 
-/// Test if a point on a torus is within the face boundary.
-/// Uses (theta, phi) parametric space with angle unwrapping and 2D ray cast.
 fn point_in_face_torus(
     p: &[f64; 3],
     face: &Face,
@@ -867,7 +801,6 @@ fn point_in_face_torus(
         (theta, phi)
     };
 
-    // Build polygon in (theta, phi) space by sampling Arc edges
     let mut raw_poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -898,7 +831,6 @@ fn point_in_face_torus(
         return false;
     }
 
-    // Unwrap angles relative to the first point
     let ref_theta = raw_poly[0].0;
     let ref_phi = raw_poly[0].1;
 
@@ -925,16 +857,11 @@ fn point_in_face_torus(
     ray_cast_2d((p_theta, p_phi), &poly)
 }
 
-/// Test if a point on a NurbsSurface is within the face boundary.
-///
-/// Uses u/v bounding-box estimation from edge projections, since
-/// UV polygon construction fails near axis singularities.
 fn point_in_face_nurbs(p: &[f64; 3], face: &Face, shell: &Shell, surface: &NurbsSurface3D) -> bool {
     use crate::boolean3d::intersect3d::project_to_nurbs;
 
     let (pu, pv) = project_to_nurbs(surface, p);
 
-    // Distance check: points not on the surface are outside
     let on_surf = surface.evaluate(pu, pv);
     if vec3::distance(on_surf, *p) > 1e-3 {
         return false;
@@ -943,13 +870,11 @@ fn point_in_face_nurbs(p: &[f64; 3], face: &Face, shell: &Shell, surface: &Nurbs
     let (surf_u_min, surf_u_max) = surface.u_range();
     let (surf_v_min, surf_v_max) = surface.v_range();
 
-    // Full-revolution NurbsSurface face: check u range only
     if is_full_rotation_nurbs_face(face, shell) {
         let (u_min, u_max) = face_u_range_nurbs(face, shell, surface);
         return pu >= u_min - EPS && pu <= u_max + EPS;
     }
 
-    // Partial revolution / general: project non-singular edge points to get u,v bounds
     let mut u_min = surf_u_max;
     let mut u_max = surf_u_min;
     let mut v_min = surf_v_max;
@@ -959,7 +884,6 @@ fn point_in_face_nurbs(p: &[f64; 3], face: &Face, shell: &Shell, surface: &Nurbs
         let edge = &shell.edges[edge_ref.edge_id];
         let (t0, t1) = edge.curve.param_range();
 
-        // Project multiple samples from each edge
         let n = 8;
         for k in 0..=n {
             let frac = k as f64 / n as f64;
@@ -967,7 +891,6 @@ fn point_in_face_nurbs(p: &[f64; 3], face: &Face, shell: &Shell, surface: &Nurbs
             let pt = edge.curve.evaluate(t);
             let (u, v) = project_to_nurbs(surface, &pt);
 
-            // Exclude axis singularities where all v collapse to a single point
             let on_surf = surface.evaluate(u, v);
             if vec3::distance(on_surf, pt) > 1e-4 {
                 continue;
@@ -980,11 +903,9 @@ fn point_in_face_nurbs(p: &[f64; 3], face: &Face, shell: &Shell, surface: &Nurbs
         }
     }
 
-    // Rectangular u/v range test
     pu >= u_min - EPS && pu <= u_max + EPS && pv >= v_min - EPS && pv <= v_max + EPS
 }
 
-/// Check if a NurbsSurface face is full-revolution (closed Arc or seam-closed edge).
 fn is_full_rotation_nurbs_face(face: &Face, shell: &Shell) -> bool {
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -1008,7 +929,6 @@ fn is_full_rotation_nurbs_face(face: &Face, shell: &Shell) -> bool {
     false
 }
 
-/// Get u parameter range of a full-revolution NurbsSurface face from its edges.
 fn face_u_range_nurbs(face: &Face, shell: &Shell, surface: &NurbsSurface3D) -> (f64, f64) {
     use crate::boolean3d::intersect3d::project_to_nurbs;
 
@@ -1019,7 +939,6 @@ fn face_u_range_nurbs(face: &Face, shell: &Shell, surface: &NurbsSurface3D) -> (
         let edge = &shell.edges[edge_ref.edge_id];
         let (t0, t1) = edge.curve.param_range();
 
-        // Project midpoint of each edge to get u
         let t_mid = (t0 + t1) * 0.5;
         let pt_mid = edge.curve.evaluate(t_mid);
         let (u, _) = project_to_nurbs(surface, &pt_mid);
@@ -1029,9 +948,8 @@ fn face_u_range_nurbs(face: &Face, shell: &Shell, surface: &NurbsSurface3D) -> (
     match u_values.len() {
         0 => (surf_u_min, surf_u_max),
         1 => {
-            // Single edge: use full surface range
             let _u = u_values[0];
-            (surf_u_min, surf_u_max) // full range
+            (surf_u_min, surf_u_max)
         }
         _ => {
             let u_min = u_values.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -1041,26 +959,20 @@ fn face_u_range_nurbs(face: &Face, shell: &Shell, surface: &NurbsSurface3D) -> (
     }
 }
 
-/// Test if a point is within a SurfaceOfSweep face boundary.
-///
-/// Uses UV bounding-box from edge sample projections. Only accurate for UV-convex faces.
 fn point_in_face_sweep(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
     let surface = &face.surface;
     let (u0, u1, v0, v1) = surface.param_range();
 
-    // Inverse-project test point
     let (pu, pv) = match surface.inverse_project(p) {
         Some(uv) => uv,
         None => return false,
     };
 
-    // Distance check
     let on_surf = surface.evaluate(pu, pv);
     if vec3::distance(on_surf, *p) > 1e-3 {
         return false;
     }
 
-    // Get UV range from edge sample projections
     let mut eu_min = u1;
     let mut eu_max = u0;
     let mut ev_min = v1;
@@ -1092,7 +1004,6 @@ fn point_in_face_sweep(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
     pu >= eu_min - EPS && pu <= eu_max + EPS && pv >= ev_min - EPS && pv <= ev_max + EPS
 }
 
-/// 2D ray cast (+x direction)
 fn ray_cast_2d(point: (f64, f64), poly: &[(f64, f64)]) -> bool {
     let n = poly.len();
     let mut inside = false;
@@ -1109,7 +1020,6 @@ fn ray_cast_2d(point: (f64, f64), poly: &[(f64, f64)]) -> bool {
     inside
 }
 
-/// Min/max s parameter across all face boundary vertices.
 fn face_s_range(face: &Face, shell: &Shell, origin: &[f64; 3], axis: &[f64; 3]) -> (f64, f64) {
     let mut s_min = f64::INFINITY;
     let mut s_max = f64::NEG_INFINITY;
@@ -1125,7 +1035,6 @@ fn face_s_range(face: &Face, shell: &Shell, origin: &[f64; 3], axis: &[f64; 3]) 
     (s_min, s_max)
 }
 
-/// Check if face is full-revolution (has Arc edge with start == end).
 fn is_full_rotation_face(face: &Face, shell: &Shell) -> bool {
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -1138,7 +1047,6 @@ fn is_full_rotation_face(face: &Face, shell: &Shell) -> bool {
     false
 }
 
-/// Compute theta from perpendicular component of q.
 fn compute_theta(q: &[f64; 3], axis: &[f64; 3], u: &[f64; 3], v: &[f64; 3]) -> f64 {
     let s = vec3::dot(*q, *axis);
     let q_perp = vec3::sub(*q, vec3::scale(*axis, s));
@@ -1147,7 +1055,6 @@ fn compute_theta(q: &[f64; 3], axis: &[f64; 3], u: &[f64; 3], v: &[f64; 3]) -> f
     cv.atan2(cu)
 }
 
-/// 2D ray cast in (theta, s) parametric space.
 #[allow(clippy::too_many_arguments)]
 fn point_in_face_parametric(
     theta: f64,
@@ -1159,7 +1066,6 @@ fn point_in_face_parametric(
     u_basis: &[f64; 3],
     v_basis: &[f64; 3],
 ) -> bool {
-    // Project face loop vertices to (theta, s) space
     let mut poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -1174,13 +1080,11 @@ fn point_in_face_parametric(
         poly.push((tv, sv));
     }
 
-    // Refine polygon by sampling Arc edges at midpoints
     let mut refined_poly = Vec::new();
     for (idx, edge_ref) in face.loop_edges.iter().enumerate() {
         refined_poly.push(poly[idx]);
         let edge = &shell.edges[edge_ref.edge_id];
         if let crate::brep::Curve3D::Arc { .. } = &edge.curve {
-            // Interpolate Arc at midpoint samples
             let (t0, t1) = edge.curve.param_range();
             let n_samples = 16;
             for k in 1..n_samples {
@@ -1199,7 +1103,6 @@ fn point_in_face_parametric(
         }
     }
 
-    // 2D ray cast (+theta direction)
     let n = refined_poly.len();
     let mut inside = false;
     let mut j = n - 1;
@@ -1218,9 +1121,6 @@ fn point_in_face_parametric(
     inside
 }
 
-// ────────── Ray-NURBS surface intersection ──────────
-
-/// Ray-NURBS surface intersection via recursive parameter subdivision + Newton.
 fn ray_nurbs_intersect(ray_origin: &[f64; 3], surface: &NurbsSurface3D, axis: RayAxis) -> Vec<f64> {
     let mut results = Vec::new();
     let (u0, u1) = surface.u_range();
@@ -1257,7 +1157,6 @@ fn ray_nurbs_subdivide(
     axis: RayAxis,
     results: &mut Vec<f64>,
 ) {
-    // 1. Sample parameter domain and compute AABB
     let n_samples = 5;
     let mut bb_min = [f64::INFINITY; 3];
     let mut bb_max = [f64::NEG_INFINITY; 3];
@@ -1279,12 +1178,10 @@ fn ray_nurbs_subdivide(
         }
     }
 
-    // 2. Ray-AABB test
     if !ray_intersects_aabb(ray_origin, &bb_min, &bb_max, axis) {
         return;
     }
 
-    // 3. Small enough -> Newton convergence
     let diag_x = bb_max[0] - bb_min[0];
     let diag_y = bb_max[1] - bb_min[1];
     let diag_z = bb_max[2] - bb_min[2];
@@ -1300,7 +1197,6 @@ fn ray_nurbs_subdivide(
         return;
     }
 
-    // 4. Quadrisect and recurse
     let u_mid = (u0 + u1) * 0.5;
     let v_mid = (v0 + v1) * 0.5;
     ray_nurbs_subdivide(
@@ -1353,23 +1249,19 @@ fn ray_nurbs_subdivide(
     );
 }
 
-/// Axis-aligned ray AABB intersection test
 fn ray_intersects_aabb(
     ray_origin: &[f64; 3],
     bb_min: &[f64; 3],
     bb_max: &[f64; 3],
     axis: RayAxis,
 ) -> bool {
-    // Perpendicular components must be within AABB range
     if !axis.perp_in_range(ray_origin, bb_min, bb_max) {
         return false;
     }
-    // Ray origin component <= bb_max component
+
     axis.component(ray_origin) <= axis.component(bb_max)
 }
 
-/// Newton method for ray-NURBS intersection.
-/// Matches perpendicular components, derives t from ray-direction component.
 fn newton_ray_surface(
     ray_origin: &[f64; 3],
     surface: &NurbsSurface3D,
@@ -1418,9 +1310,6 @@ fn newton_ray_surface(
     None
 }
 
-// ────────── Main entry point ──────────
-
-/// Count ray crossings along a given axis.
 fn count_ray_crossings(p: &[f64; 3], shell: &Shell, axis: RayAxis) -> u32 {
     let mut hits = Vec::new();
 
@@ -1593,7 +1482,7 @@ fn count_ray_crossings(p: &[f64; 3], shell: &Shell, axis: RayAxis) -> u32 {
     unique
 }
 
-/// Point-in-shell test via ray casting (X->Y->Z fallback).
+/// シェルの包囲ボックス外では `false` を返します。内部では X、Y、Z の順で正方向レイの交差数が得られた軸を使い、奇数なら `true` を返します。
 pub fn point_in_shell(p: &[f64; 3], shell: &Shell) -> bool {
     let (bb_min, bb_max) = shell.bounding_box();
     if p[0] < bb_min[0] - EPS
@@ -1615,13 +1504,11 @@ pub fn point_in_shell(p: &[f64; 3], shell: &Shell) -> bool {
     false
 }
 
-/// Test if a 3D point is inside a face polygon.
-/// Drops the axis with largest normal component for 2D ray cast.
+/// 点の射影が面ループ内なら `true` を返します。平面は主軸射影によるレイキャストを使い、曲面は曲面種別ごとのパラメータ化または近似射影を使います。
 pub fn point_in_face_polygon(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
     let normal = match &face.surface {
         Surface::Plane { normal, .. } => *normal,
         Surface::Sphere { center, .. } => {
-            // Approximate normal from centroid direction
             let mut centroid = [0.0, 0.0, 0.0];
             let mut count = 0usize;
             for edge_ref in &face.loop_edges {
@@ -1717,7 +1604,6 @@ pub fn point_in_face_polygon(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
         }
     };
 
-    // Drop axis with largest normal component for projection
     let abs_n = [normal[0].abs(), normal[1].abs(), normal[2].abs()];
     let drop_axis = if abs_n[0] >= abs_n[1] && abs_n[0] >= abs_n[2] {
         0
@@ -1737,7 +1623,6 @@ pub fn point_in_face_polygon(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
 
     let (px, py) = project(p);
 
-    // Collect face loop vertices
     let mut poly = Vec::new();
     for edge_ref in &face.loop_edges {
         let edge = &shell.edges[edge_ref.edge_id];
@@ -1749,7 +1634,6 @@ pub fn point_in_face_polygon(p: &[f64; 3], face: &Face, shell: &Shell) -> bool {
         poly.push(project(&shell.vertices[v]));
     }
 
-    // 2D ray cast (+u direction)
     let n = poly.len();
     let mut inside = false;
     let mut j = n - 1;

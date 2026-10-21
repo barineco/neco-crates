@@ -1,8 +1,3 @@
-//! NurbsSurface x Plane / Quadric intersection.
-//!
-//! Fixes v, solves u as a rational Bezier polynomial, and traces branches into polylines.
-//! Quadric uses implicit function sampling + bisection.
-
 use neco_nurbs::NurbsSurface3D;
 
 use crate::bezier_decompose::{decompose_to_bezier_patches, BezierPatch};
@@ -11,37 +6,24 @@ use crate::brep::Surface;
 use crate::vec3;
 use neco_nurbs::solve_polynomial;
 
-// ─── Constants ────────────────────────────────────────────
-
-/// Minimum v sample count
 const V_SAMPLES_MIN: usize = 120;
 
-/// Maximum v sample count
 const V_SAMPLES_MAX: usize = 720;
 
-/// v samples per span
 const V_SAMPLES_PER_SPAN: usize = 120;
 
-/// Root parameter range tolerance
 const ROOT_TOL: f64 = 1e-10;
 
-/// u-direction samples for quadric intersection
 const U_SAMPLES_QUADRIC: usize = 64;
 
-/// Newton projection convergence tolerance
 const NEWTON_CONVERGE_TOL: f64 = 1e-8;
 
-/// Two-stage sampling: coarse pass count
 const COARSE_SAMPLES: usize = 16;
-/// Two-stage sampling: fine samples per interval
 const FINE_SAMPLES_PER_INTERVAL: usize = 8;
 
-/// Maximum bisection iterations
 const BISECT_MAX_ITER: usize = 50;
 
-// ─── Public API ────────────────────────────────────────
-
-/// NurbsSurface x Plane intersection curves as polylines.
+/// NURBS 曲面と平面の交線を標本化し、連続する折れ線として返します。
 pub fn nurbs_plane_intersection(
     surface: &NurbsSurface3D,
     plane_origin: &[f64; 3],
@@ -50,10 +32,8 @@ pub fn nurbs_plane_intersection(
     let n = plane_normal;
     let d = n[0] * plane_origin[0] + n[1] * plane_origin[1] + n[2] * plane_origin[2];
 
-    // 1. Decompose into Bezier patches
     let patches = decompose_to_bezier_patches(surface);
 
-    // 2. Prune by control-point sign test
     let active_patches: Vec<&BezierPatch> = patches
         .iter()
         .filter(|patch| {
@@ -87,10 +67,8 @@ pub fn nurbs_plane_intersection(
         return vec![];
     }
 
-    // 3. Determine v sample count
     let n_v_samples = v_sample_count(surface);
 
-    // 4. Sweep v to collect intersections
     let v_min = surface.knots_v[surface.degree_v];
     let v_max = surface.knots_v[surface.control_points[0].len()];
     let v_range = v_max - v_min;
@@ -103,16 +81,12 @@ pub fn nurbs_plane_intersection(
         for patch in &active_patches {
             let (u_lo, u_hi) = (patch.u_min, patch.u_max);
 
-            // Compute u-direction Bernstein values via De Casteljau at fixed v
             let bernstein = bezier_plane_u_polynomial(patch, n, d, v);
 
-            // Bernstein to power basis
             let power = bernstein_to_power_basis(&bernstein, u_lo, u_hi);
 
-            // Find polynomial roots
             let roots = solve_polynomial(&power).expect("polynomial-highorder feature enabled");
 
-            // Record roots within parameter range
             for root in roots {
                 if root >= u_lo - ROOT_TOL && root <= u_hi + ROOT_TOL {
                     let u_clamped = root.clamp(u_lo, u_hi);
@@ -123,16 +97,11 @@ pub fn nurbs_plane_intersection(
         }
     }
 
-    // 5. Branch classification and polyline construction
     let char_len = estimate_char_len(surface);
     classify_branches(&raw_points, (v_min, v_max), char_len)
 }
 
-// ─── Helper functions ────────────────────────────────────
-
-/// Compute u-direction Bernstein plane-distance coefficients at fixed v.
-///
-/// Uses numerator form w_i*(n*P_i - d) to eliminate W(u) > 0 denominator.
+/// 指定した `v` における Bézier パッチと平面の符号付き距離を、`u` 方向の Bernstein 係数で返します。
 pub fn bezier_plane_u_polynomial(
     patch: &BezierPatch,
     normal: &[f64; 3],
@@ -142,7 +111,6 @@ pub fn bezier_plane_u_polynomial(
     let q = patch.degree_v;
     let n_u = patch.degree_u + 1;
 
-    // Normalize v to [0,1]
     let (v_lo, v_hi) = (patch.v_min, patch.v_max);
     let t = if (v_hi - v_lo).abs() < 1e-30 {
         0.0
@@ -153,12 +121,10 @@ pub fn bezier_plane_u_polynomial(
     let mut result = Vec::with_capacity(n_u);
 
     for i in 0..n_u {
-        // De Casteljau along v-direction control points
         let cp_v = &patch.control_points[i];
         let w_v = &patch.weights[i];
         let (pt, w) = de_casteljau_3d(cp_v, w_v, q, t);
 
-        // Numerator form: w * (n*P - d)
         let signed_dist = normal[0] * pt[0] + normal[1] * pt[1] + normal[2] * pt[2] - d;
         result.push(w * signed_dist);
     }
@@ -166,8 +132,7 @@ pub fn bezier_plane_u_polynomial(
     result
 }
 
-/// De Casteljau evaluation of a rational Bezier curve.
-/// Returns (point, weight) in dehomogenized coordinates.
+/// 同次座標の de Casteljau 法で有理 Bézier 曲線を評価し、点と重みを返します。
 pub fn de_casteljau_3d(
     pts: &[[f64; 3]],
     weights: &[f64],
@@ -177,14 +142,12 @@ pub fn de_casteljau_3d(
     debug_assert_eq!(pts.len(), degree + 1);
     debug_assert_eq!(weights.len(), degree + 1);
 
-    // Copy to homogeneous coordinates
     let n = degree + 1;
     let mut hx: Vec<f64> = pts.iter().zip(weights).map(|(p, &w)| p[0] * w).collect();
     let mut hy: Vec<f64> = pts.iter().zip(weights).map(|(p, &w)| p[1] * w).collect();
     let mut hz: Vec<f64> = pts.iter().zip(weights).map(|(p, &w)| p[2] * w).collect();
     let mut hw: Vec<f64> = weights.to_vec();
 
-    // De Casteljau recursion
     for r in 1..n {
         for j in (r..n).rev() {
             let s = 1.0 - t;
@@ -203,14 +166,13 @@ pub fn de_casteljau_3d(
     }
 }
 
-/// Bernstein to power basis conversion.
+/// 区間 `[u_min, u_max]` 上の Bernstein 係数を、`u` の昇べき順の係数へ変換します。
 pub fn bernstein_to_power_basis(bernstein: &[f64], u_min: f64, u_max: f64) -> Vec<f64> {
     let n = bernstein.len() - 1;
     if n == 0 {
         return bernstein.to_vec();
     }
 
-    // First compute power basis on [0,1]
     let mut power_01 = vec![0.0; n + 1];
     for (k, power_coeff) in power_01.iter_mut().enumerate().take(n + 1) {
         let mut delta = 0.0;
@@ -221,7 +183,6 @@ pub fn bernstein_to_power_basis(bernstein: &[f64], u_min: f64, u_max: f64) -> Ve
         *power_coeff = binomial(n as u64, k as u64) as f64 * delta;
     }
 
-    // Remap [0,1] -> [u_min, u_max]
     let span = u_max - u_min;
     if span.abs() < 1e-30 {
         return power_01;
@@ -240,7 +201,7 @@ pub fn bernstein_to_power_basis(bernstein: &[f64], u_min: f64, u_max: f64) -> Ve
     result
 }
 
-/// Binomial coefficient C(n, k). Safe for n <= 62.
+/// 二項係数 `n choose k` を返し、`k > n` では零を返します。
 pub fn binomial(n: u64, k: u64) -> u64 {
     if k > n {
         return 0;
@@ -257,7 +218,7 @@ pub fn binomial(n: u64, k: u64) -> u64 {
     result as u64
 }
 
-/// Determine v sample count, proportional to span count.
+/// `v` 方向の推定スパン数から標本数を求め、120 以上 720 以下に収めます。
 pub fn v_sample_count(surface: &NurbsSurface3D) -> usize {
     let q = surface.degree_v;
     let n_v = surface.control_points[0].len();
@@ -267,7 +228,6 @@ pub fn v_sample_count(surface: &NurbsSurface3D) -> usize {
     count.clamp(V_SAMPLES_MIN, V_SAMPLES_MAX)
 }
 
-/// Estimate characteristic length from AABB diagonal.
 fn estimate_char_len(surface: &NurbsSurface3D) -> f64 {
     let (bb_min, bb_max) = surface.aabb();
     let dx = bb_max[0] - bb_min[0];
@@ -276,9 +236,7 @@ fn estimate_char_len(surface: &NurbsSurface3D) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt().max(0.01)
 }
 
-// ─── Quadric implicit ─────────────────────────────────
-
-/// Evaluate quadric implicit function.
+/// 球・楕円体・円柱・円錐の陰関数を評価します。ほかの曲面を渡すと panic します。
 pub fn quadric_implicit(surface: &Surface, pt: &[f64; 3]) -> f64 {
     match surface {
         Surface::Sphere { center, radius } => {
@@ -326,7 +284,7 @@ pub fn quadric_implicit(surface: &Surface, pt: &[f64; 3]) -> f64 {
     }
 }
 
-/// Prune patches by control-point sign test.
+/// 制御点における二次曲面の陰関数値が零を挟む場合に真を返します。交差候補を絞るための判定であり、交差を確定しません。
 pub fn patch_may_intersect_quadric(patch: &BezierPatch, quadric: &Surface) -> bool {
     let mut has_positive = false;
     let mut has_negative = false;
@@ -348,7 +306,7 @@ pub fn patch_may_intersect_quadric(patch: &BezierPatch, quadric: &Surface) -> bo
     false
 }
 
-/// Generic bisection for implicit zero along u at fixed v.
+/// 符号が変わる `u` 区間を二分し、陰関数の根を近似します。評価値が NaN の場合は、その時点の中点を返します。
 pub fn bisect_nurbs_implicit<F>(u_lo: f64, u_hi: f64, f_lo: f64, implicit_fn: &F) -> f64
 where
     F: Fn(f64) -> f64,
@@ -376,15 +334,13 @@ where
     0.5 * (lo + hi)
 }
 
-/// NurbsSurface x Quadric intersection curves as polylines.
+/// NURBS 曲面と球・楕円体・円柱・円錐の交線を標本化し、連続する折れ線として返します。標本間で符号が変わらない接触は検出しません。
 pub fn nurbs_quadric_intersection(
     surface: &NurbsSurface3D,
     quadric: &Surface,
 ) -> Vec<Vec<[f64; 3]>> {
-    // 1. Decompose into Bezier patches
     let patches = decompose_to_bezier_patches(surface);
 
-    // 2. Prune by control-point sign test
     let active_patches: Vec<&BezierPatch> = patches
         .iter()
         .filter(|patch| patch_may_intersect_quadric(patch, quadric))
@@ -394,10 +350,8 @@ pub fn nurbs_quadric_intersection(
         return vec![];
     }
 
-    // 3. Determine v sample count
     let n_v_samples = v_sample_count(surface);
 
-    // 4. v sweep + u sampling + bisection
     let v_min = surface.knots_v[surface.degree_v];
     let v_max = surface.knots_v[surface.control_points[0].len()];
     let v_range = v_max - v_min;
@@ -438,14 +392,11 @@ pub fn nurbs_quadric_intersection(
         }
     }
 
-    // 5. Branch classification and polyline construction
     let char_len = estimate_char_len(surface);
     classify_branches(&raw_points, (v_min, v_max), char_len)
 }
 
-// ─── Torus implicit ─────────────────────────────────
-
-/// Evaluate torus implicit function.
+/// 指定した軸・主半径・管半径を持つトーラスの陰関数を評価します。
 pub fn torus_implicit(
     pt: &[f64; 3],
     center: &[f64; 3],
@@ -465,7 +416,7 @@ pub fn torus_implicit(
     (rho - major_r).powi(2) + h * h - minor_r * minor_r
 }
 
-/// Prune patches by AABB-torus distance.
+/// Bézier パッチの包囲箱がトーラス管へ届く場合に真を返します。交差候補を絞るための保守的な判定です。
 pub fn patch_may_intersect_torus(
     patch: &BezierPatch,
     center: &[f64; 3],
@@ -499,7 +450,7 @@ pub fn patch_may_intersect_torus(
     dist_to_tube <= minor_r + half_diag
 }
 
-/// NurbsSurface x Torus intersection curves as polylines.
+/// NURBS 曲面とトーラスの交線を標本化し、連続する折れ線として返します。標本間で符号が変わらない接触は検出しません。
 pub fn nurbs_torus_intersection(
     surface: &NurbsSurface3D,
     center: &[f64; 3],
@@ -507,10 +458,8 @@ pub fn nurbs_torus_intersection(
     major_r: f64,
     minor_r: f64,
 ) -> Vec<Vec<[f64; 3]>> {
-    // 1. Decompose into Bezier patches
     let patches = decompose_to_bezier_patches(surface);
 
-    // 2. Prune by AABB-torus distance
     let active_patches: Vec<&BezierPatch> = patches
         .iter()
         .filter(|patch| patch_may_intersect_torus(patch, center, axis, major_r, minor_r))
@@ -520,10 +469,8 @@ pub fn nurbs_torus_intersection(
         return vec![];
     }
 
-    // 3. Determine v sample count
     let n_v_samples = v_sample_count(surface);
 
-    // 4. v sweep + u sampling + bisection
     let v_min = surface.knots_v[surface.degree_v];
     let v_max = surface.knots_v[surface.control_points[0].len()];
     let v_range = v_max - v_min;
@@ -564,14 +511,11 @@ pub fn nurbs_torus_intersection(
         }
     }
 
-    // 5. Branch classification and polyline construction
     let char_len = estimate_char_len(surface);
     classify_branches(&raw_points, (v_min, v_max), char_len)
 }
 
-// ─── NurbsSurface x NurbsSurface intersection ─────
-
-/// Test whether two AABBs overlap.
+/// 二つの軸平行包囲箱が接触または重なっている場合に真を返します。
 pub fn aabb_overlap(
     a_min: &[f64; 3],
     a_max: &[f64; 3],
@@ -586,7 +530,7 @@ pub fn aabb_overlap(
         && a_max[2] >= b_min[2]
 }
 
-/// 3-variable Newton for NurbsSurface x NurbsSurface.
+/// 第一曲面の一方のパラメータを保ち、両曲面の一致点を Newton 法で近似します。残差が `1e-6` 未満に収束しない場合は `None` を返します。
 pub fn newton_nurbs_nurbs(
     surf_a: &NurbsSurface3D,
     surf_b: &NurbsSurface3D,
@@ -656,7 +600,6 @@ pub fn newton_nurbs_nurbs(
         vb = (vb - delta_vb).clamp(vb_min, vb_max);
     }
 
-    // Convergence check
     let pa = surf_a.evaluate(ua, v_a);
     let pb = surf_b.evaluate(ub, vb);
     let dx = pa[0] - pb[0];
@@ -669,14 +612,12 @@ pub fn newton_nurbs_nurbs(
     }
 }
 
-/// 3x3 determinant.
 fn det3(m: &[[f64; 3]; 3]) -> f64 {
     m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
         - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
 }
 
-/// Cramer's rule: determinant with column replaced by rhs.
 fn det3_col(m: &[[f64; 3]; 3], rhs: &[f64; 3], col: usize) -> f64 {
     let mut tmp = *m;
     for row in 0..3 {
@@ -685,7 +626,6 @@ fn det3_col(m: &[[f64; 3]; 3], rhs: &[f64; 3], col: usize) -> f64 {
     det3(&tmp)
 }
 
-/// Precomputed grid for fast nearest-neighbor projection.
 struct SurfaceGrid {
     points: Vec<(f64, f64, [f64; 3])>,
 }
@@ -724,7 +664,6 @@ impl SurfaceGrid {
     }
 }
 
-/// Newton projection onto surface. Returns (u, v).
 fn project_to_surface_newton(
     surface: &NurbsSurface3D,
     target: &[f64; 3],
@@ -771,16 +710,14 @@ fn project_to_surface_newton(
     (u, v)
 }
 
-/// NurbsSurface x NurbsSurface intersection curves as polylines.
+/// 包囲箱が重なるパッチ対を標本化し、Newton 法で近似した NURBS 曲面同士の交線を返します。標本間で符号が変わらない接触は検出しません。
 pub fn nurbs_nurbs_intersection(
     surf_a: &NurbsSurface3D,
     surf_b: &NurbsSurface3D,
 ) -> Vec<Vec<[f64; 3]>> {
-    // 1. Decompose into Bezier patches
     let patches_a = decompose_to_bezier_patches(surf_a);
     let patches_b = decompose_to_bezier_patches(surf_b);
 
-    // 2. Prune patch pairs by AABB overlap
     let mut active_pairs: Vec<(usize, usize)> = Vec::new();
     let aabbs_a: Vec<([f64; 3], [f64; 3])> = patches_a.iter().map(|p| p.aabb()).collect();
     let aabbs_b: Vec<([f64; 3], [f64; 3])> = patches_b.iter().map(|p| p.aabb()).collect();
@@ -797,10 +734,8 @@ pub fn nurbs_nurbs_intersection(
         return vec![];
     }
 
-    // Precompute grid for surf_b
     let grid_b = SurfaceGrid::build(surf_b, 32);
 
-    // 3. Sweep v_a
     let n_v_samples = v_sample_count(surf_a);
     let v_min = surf_a.knots_v[surf_a.degree_v];
     let v_max = surf_a.knots_v[surf_a.control_points[0].len()];
@@ -855,7 +790,6 @@ pub fn nurbs_nurbs_intersection(
                 (sd, u_b, v_b)
             };
 
-            // Coarse pass
             let mut coarse_sd = Vec::with_capacity(COARSE_SAMPLES + 1);
             let mut coarse_uv_b = Vec::with_capacity(COARSE_SAMPLES + 1);
 
@@ -867,7 +801,6 @@ pub fn nurbs_nurbs_intersection(
                 prev_uv_b = Some((u_b, v_b));
             }
 
-            // Identify candidate intervals
             let mut candidate_intervals = [false; COARSE_SAMPLES];
             for ci in 0..COARSE_SAMPLES {
                 if (coarse_sd[ci] < 0.0 && coarse_sd[ci + 1] > 0.0)
@@ -883,7 +816,6 @@ pub fn nurbs_nurbs_intersection(
                 }
             }
 
-            // Fine pass
             for ci in 0..COARSE_SAMPLES {
                 if !candidate_intervals[ci] {
                     continue;
@@ -927,7 +859,6 @@ pub fn nurbs_nurbs_intersection(
         }
     }
 
-    // Deduplicate
     raw_points.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     let dedup_tol = char_len * 0.01;
     let mut deduped: Vec<(f64, f64, [f64; 3])> = Vec::new();
@@ -945,7 +876,6 @@ pub fn nurbs_nurbs_intersection(
         }
     }
 
-    // 4. Branch classification and polyline construction
     classify_branches(&deduped, (v_min, v_max), char_len)
 }
 

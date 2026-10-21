@@ -119,11 +119,9 @@ impl NurbsCurve2D {
         (first[0] - last[0]).abs() < tol && (first[1] - last[1]).abs() < tol
     }
 
-    /// Evaluate the curve at parameter `t` using De Boor's algorithm.
-    ///
-    /// `t` should be in the range [knots[degree], knots[n]] where n = control_points.len().
-    ///
-    /// Panics when `degree > 10` because the fast path uses a fixed-size stack buffer.
+    /// De Boor アルゴリズムでパラメーター `t` における曲線を評価します。
+    /// `t` の範囲はノット列の次数番目から制御点数番目までです。
+    /// 高速パスは固定長のスタックバッファーを使うため、次数が 10 より大きいとパニックします。
     pub fn evaluate(&self, t: f64) -> [f64; 2] {
         let (fx, fy, fw, _) = deboor_1d_control_points_2d(
             self.degree,

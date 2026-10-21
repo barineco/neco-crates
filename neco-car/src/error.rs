@@ -1,8 +1,8 @@
 use core::fmt;
 
+/// CAR v1 の読み書きで返すエラーです。
 #[derive(Debug)]
 pub enum CarError {
-    // parse
     UnexpectedEnd,
     VarintOverflow,
     InvalidHeader(neco_cbor::DecodeErrorKind),
@@ -15,7 +15,6 @@ pub enum CarError {
     BlockLengthMismatch,
     EmptySection,
     InvalidCidLink,
-    // write
     HeaderEncode(neco_cbor::EncodeError),
 }
 

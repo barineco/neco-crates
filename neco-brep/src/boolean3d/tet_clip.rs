@@ -1,7 +1,3 @@
-//! Tet-plane clipping.
-//!
-//! Sequentially splits base mesh tets by planes and classifies inside/outside.
-
 use crate::brep::{Shell, Surface};
 use crate::vec3;
 #[cfg(test)]
@@ -13,10 +9,6 @@ use crate::vec3::{
 use super::tolerance::GEO_TOL;
 
 type TetMeshClipResult = Result<(Vec<[f64; 3]>, Vec<[usize; 4]>), String>;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TetClipError
-// ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 pub enum TetClipError {
@@ -43,18 +35,15 @@ impl std::fmt::Display for TetClipError {
 
 impl std::error::Error for TetClipError {}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ClipSurface trait
-// ─────────────────────────────────────────────────────────────────────────────
-
+/// 切断面は負の符号を内側、正の符号を外側として分類します。
 pub trait ClipSurface {
-    /// Signed distance (positive=outside, negative=inside)
+    /// 点から曲面までの符号付き距離です。
     fn signed_distance(&self, p: [f64; 3]) -> f64;
 
-    /// Edge-surface intersection parameters t in [0, 1]
+    /// 辺上の交点を始点から終点への比率で返します。
     fn intersect_edge_surface(&self, a: [f64; 3], b: [f64; 3]) -> Vec<f64>;
 
-    /// Vertex classification (default: signed_distance + GEO_TOL threshold)
+    /// `GEO_TOL` 内の点を `Side::OnPlane` とし、負を内側、正を外側に分類します。
     fn classify_surface(&self, p: [f64; 3]) -> Side {
         let d = self.signed_distance(p);
         if d > GEO_TOL {
@@ -76,7 +65,7 @@ pub struct TetClipWorkspace {
 pub struct ClipPlane {
     pub origin: [f64; 3],
     pub normal: [f64; 3],
-    /// Triangle for orient3d
+    /// `orient3d` による面上判定に使う補助三角形です。
     pub tri: [[f64; 3]; 3],
 }
 
@@ -89,7 +78,6 @@ pub enum Side {
 
 impl ClipPlane {
     pub fn from_origin_normal(origin: [f64; 3], normal: [f64; 3]) -> Self {
-        // Build two vectors orthogonal to normal
         let arbitrary = if normal[0].abs() < 0.9 {
             [1.0, 0.0, 0.0]
         } else {
@@ -108,12 +96,10 @@ impl ClipPlane {
     }
 
     pub fn classify(&self, p: [f64; 3]) -> Side {
-        // Exact on-plane test via orient3d
         let o = neco_cdt::orient3d(self.tri[0], self.tri[1], self.tri[2], p);
         if o == 0.0 {
             return Side::OnPlane;
         }
-        // Sign from dot product (independent of orient3d sign convention)
         let d = vec3::dot(vec3::sub(p, self.origin), self.normal);
         if d > 0.0 {
             Side::Positive
@@ -154,15 +140,10 @@ impl ClipSurface for ClipPlane {
         }
     }
 
-    /// Override: use orient3d exact predicate
     fn classify_surface(&self, p: [f64; 3]) -> Side {
         self.classify(p)
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ClipSphere / ClipCylinder / ClipCone
-// ─────────────────────────────────────────────────────────────────────────────
 
 pub struct ClipSphere {
     center: [f64; 3],
@@ -300,6 +281,7 @@ impl ClipSurface for ClipCone {
         perp - along * self.half_angle.tan()
     }
 
+    /// 頂点から軸の正方向半空間にある辺との交点だけを返します。
     fn intersect_edge_surface(&self, a: [f64; 3], b: [f64; 3]) -> Vec<f64> {
         let d = vec3::sub(b, a);
         let f = vec3::sub(a, self.origin);
@@ -312,7 +294,6 @@ impl ClipSurface for ClipCone {
         let a2 = d_perp_sq - tan2 * d_dot_ax * d_dot_ax;
         let b2 = 2.0 * (d_perp_f_perp - tan2 * d_dot_ax * f_dot_ax);
         let c2 = f_perp_sq - tan2 * f_dot_ax * f_dot_ax;
-        // Filter: only keep roots where the point is on the apex-forward side
         solve_quadratic_01(a2, b2, c2)
             .into_iter()
             .filter(|&t| {
@@ -325,7 +306,7 @@ impl ClipSurface for ClipCone {
 
 pub struct ClipTorus {
     center: [f64; 3],
-    axis: [f64; 3], // normalized
+    axis: [f64; 3],
     major_radius: f64,
     minor_radius: f64,
 }
@@ -342,8 +323,6 @@ impl ClipTorus {
         }
     }
 
-    /// Build orthonormal frame (u, v, axis) and transform point to local coords
-    /// where axis maps to Z.
     fn to_local(&self, p: [f64; 3]) -> [f64; 3] {
         let (u, v) = orthonormal_basis(self.axis);
         let rel = vec3::sub(p, self.center);
@@ -365,7 +344,6 @@ impl ClipSurface for ClipTorus {
     }
 
     fn intersect_edge_surface(&self, a: [f64; 3], b: [f64; 3]) -> Vec<f64> {
-        // Transform to local coords (center=origin, axis=Z)
         let a_loc = self.to_local(a);
         let b_loc = self.to_local(b);
         let d_loc = vec3::sub(b_loc, a_loc);
@@ -373,9 +351,6 @@ impl ClipSurface for ClipTorus {
         let big_r = self.major_radius;
         let small_r = self.minor_radius;
 
-        // Torus implicit: (x^2+y^2+z^2+R^2-r^2)^2 - 4R^2(x^2+y^2) = 0
-        // P(t) = a_loc + t * d_loc
-        // f(t) and df(t) for Newton refinement
         let f = |t: f64| -> f64 {
             let px = a_loc[0] + t * d_loc[0];
             let py = a_loc[1] + t * d_loc[1];
@@ -396,7 +371,6 @@ impl ClipSurface for ClipTorus {
             2.0 * s * ds - 4.0 * big_r * big_r * d_xy
         };
 
-        // Subdivide [0, 1] into N intervals, find sign changes and near-zero sample points
         const N: usize = 64;
         let mut roots = Vec::new();
         let mut samples = Vec::with_capacity(N + 1);
@@ -409,19 +383,16 @@ impl ClipSurface for ClipTorus {
             let (t0, f0) = samples[i];
             let (t1, f1) = samples[i + 1];
 
-            // Exact (or near-exact) root at sample point
             if f0.abs() < 1e-8 && (0.0..=1.0).contains(&t0) {
                 roots.push(t0);
-                continue; // don't also bracket from this interval
+                continue;
             }
 
             if f0 * f1 < 0.0 {
-                // Sign change — bracket root with Newton
                 if let Some(root) = newton_refine_01(t0, t1, &f, &df) {
                     roots.push(root);
                 }
             } else if f0 * f1 > 0.0 {
-                // Check midpoint for tangent / narrow crossing cases
                 let t_mid = (t0 + t1) * 0.5;
                 let f_mid = f(t_mid);
                 if f_mid.abs() < 1e-6 {
@@ -429,7 +400,6 @@ impl ClipSurface for ClipTorus {
                         roots.push(root);
                     }
                 } else if f0 * f_mid < 0.0 {
-                    // Two sign changes within this interval
                     if let Some(r1) = newton_refine_01(t0, t_mid, &f, &df) {
                         roots.push(r1);
                     }
@@ -439,13 +409,11 @@ impl ClipSurface for ClipTorus {
                 }
             }
         }
-        // Check last sample point
         let (t_last, f_last) = samples[N];
         if f_last.abs() < 1e-8 && t_last <= 1.0 {
             roots.push(t_last);
         }
 
-        // Deduplicate roots that are too close
         roots.sort_by(|a, b| a.total_cmp(b));
         roots.dedup_by(|a, b| (*a - *b).abs() < 1e-10);
         roots
@@ -474,7 +442,6 @@ impl TetClipWorkspace {
     }
 }
 
-/// Degenerate tet check (duplicate vertex indices).
 #[inline]
 fn is_degenerate(tet: &[usize; 4]) -> bool {
     tet[0] == tet[1]
@@ -485,9 +452,7 @@ fn is_degenerate(tet: &[usize; 4]) -> bool {
         || tet[2] == tet[3]
 }
 
-/// Clip a tet by a plane -> (positive tets, negative tets).
-///
-/// Degenerate tets are excluded from results.
+/// 四面体を平面で切断し、正側、負側の順に四面体を返します。同一頂点を含む退化四面体は返しません。
 pub fn clip_tet(
     workspace: &mut TetClipWorkspace,
     tet: [usize; 4],
@@ -505,11 +470,9 @@ pub fn clip_tet(
         .filter(|(s, _)| *s == Side::Negative)
         .count();
 
-    // All vertices on positive side
     if n_neg == 0 {
         return (vec![tet], vec![]);
     }
-    // All vertices on negative side
     if n_pos == 0 {
         return (vec![], vec![tet]);
     }
@@ -519,17 +482,14 @@ pub fn clip_tet(
     } else if n_neg == 1 {
         clip_tet_1_3(workspace, &classified, plane, Side::Negative)
     } else {
-        // 2+2 split
         clip_tet_2_2(workspace, &classified, plane)
     };
 
-    // Remove degenerate tets
     let pos = pos.into_iter().filter(|t| !is_degenerate(t)).collect();
     let neg = neg.into_iter().filter(|t| !is_degenerate(t)).collect();
     (pos, neg)
 }
 
-/// 1+3 split: one vertex on isolated_side, three on opposite.
 fn clip_tet_1_3(
     workspace: &mut TetClipWorkspace,
     classified: &[(Side, usize); 4],
@@ -561,9 +521,7 @@ fn clip_tet_1_3(
         }
     });
 
-    // Isolated vertex side: 1 tet
     let iso_tet = [v_iso, cut_pts[0], cut_pts[1], cut_pts[2]];
-    // Opposite side: prism -> 3 tets (Dompierre)
     let prism_tets = decompose_prism(cut_pts, [others[0], others[1], others[2]]);
 
     if isolated_side == Side::Positive {
@@ -573,8 +531,6 @@ fn clip_tet_1_3(
     }
 }
 
-/// Decompose prism (top, bot) into 3 tets.
-/// Dompierre: diagonal chosen by minimum vertex index.
 fn decompose_prism(top: [usize; 3], bot: [usize; 3]) -> Vec<[usize; 4]> {
     let all = [top[0], top[1], top[2], bot[0], bot[1], bot[2]];
     let min_v = *all.iter().min().unwrap();
@@ -602,7 +558,7 @@ fn decompose_prism(top: [usize; 3], bot: [usize; 3]) -> Vec<[usize; 4]> {
 }
 
 impl TetClipWorkspace {
-    /// Clip all tets by one plane, keeping the specified side.
+    /// 全ての四面体を平面で切断し、`keep` で指定した側を保持します。`Side::OnPlane` を指定すると両側を保持します。
     pub fn clip_by_plane(&mut self, plane: &ClipPlane, keep: Side) {
         let old_tets = std::mem::take(&mut self.tets);
         for tet in old_tets {
@@ -618,7 +574,7 @@ impl TetClipWorkspace {
         }
     }
 
-    /// Remove unused nodes and compact indices.
+    /// 未使用の頂点を除去し、頂点番号を詰めます。
     pub fn compact(self) -> (Vec<[f64; 3]>, Vec<[usize; 4]>) {
         let mut used = vec![false; self.nodes.len()];
         for tet in &self.tets {
@@ -650,7 +606,7 @@ impl TetClipWorkspace {
     }
 }
 
-/// Generate ClipPlanes from a box shell.
+/// 箱の `Shell` から切断平面を生成します。面が `Surface::Plane` 以外ならエラーを返します。
 pub fn clip_planes_from_box_shell(shell: &Shell) -> Result<Vec<ClipPlane>, String> {
     shell
         .faces
@@ -666,11 +622,7 @@ pub fn clip_planes_from_box_shell(shell: &Shell) -> Result<Vec<ClipPlane>, Strin
         .collect()
 }
 
-/// Subtract box operand from mesh.
-///
-/// For each plane: positive tets (outside operand) are kept;
-/// negative tets (inside candidate) proceed to next plane.
-/// Tets surviving all planes are discarded (inside operand).
+/// メッシュから箱を減算します。各面の正側を確定結果へ移し、全ての負側に残る箱内部は捨てます。
 pub fn clip_mesh_subtract_box(
     nodes: Vec<[f64; 3]>,
     tets: Vec<[usize; 4]>,
@@ -678,29 +630,24 @@ pub fn clip_mesh_subtract_box(
 ) -> TetMeshClipResult {
     let planes = clip_planes_from_box_shell(shell)?;
     let mut ws = TetClipWorkspace::new(nodes, vec![]);
-    // candidates: tets not yet classified
     let mut candidates = tets;
-    // kept: confirmed outside tets
     let mut kept: Vec<[usize; 4]> = Vec::new();
 
     for plane in &planes {
         let mut next_candidates = Vec::new();
         for tet in candidates {
             let (pos_tets, neg_tets) = clip_tet(&mut ws, tet, plane);
-            // Positive = outside operand -> keep
             kept.extend(pos_tets);
-            // Negative = still inside candidate -> next plane
             next_candidates.extend(neg_tets);
         }
         candidates = next_candidates;
     }
-    // Remaining candidates are inside operand -> discard
 
     ws.tets = kept;
     Ok(ws.compact())
 }
 
-/// Intersect with box operand: keep only interior.
+/// メッシュと箱の共通部分として、全平面の負側を保持します。
 pub fn clip_mesh_intersect_box(
     nodes: Vec<[f64; 3]>,
     tets: Vec<[usize; 4]>,
@@ -713,10 +660,6 @@ pub fn clip_mesh_intersect_box(
     }
     Ok(ws.compact())
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality improvement: aspect ratio / adjacency / 2-3 flip / Laplacian smoothing
-// ─────────────────────────────────────────────────────────────────────────────
 
 fn sorted_tri(a: usize, b: usize, c: usize) -> (usize, usize, usize) {
     let mut v = [a, b, c];
@@ -756,7 +699,6 @@ pub(crate) fn build_adjacency(tets: &[[usize; 4]]) -> Vec<[Option<usize>; 4]> {
     neighbors
 }
 
-/// Find tet containing point p (linear search).
 pub(crate) fn find_containing_tet(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
@@ -771,9 +713,8 @@ pub(crate) fn find_containing_tet(
         let vol = neco_cdt::orient3d(a, b, c, d);
         if vol.abs() < 1e-30 {
             continue;
-        } // degenerate tet
+        }
 
-        // All 4 sub-tets formed by replacing one vertex with p must have the same sign as vol
         let sign = vol.signum();
         let o0 = neco_cdt::orient3d(p, b, c, d) * sign;
         let o1 = neco_cdt::orient3d(a, p, c, d) * sign;
@@ -787,7 +728,6 @@ pub(crate) fn find_containing_tet(
     None
 }
 
-/// Bowyer-Watson cavity: BFS collect tets whose circumsphere contains point.
 pub(crate) fn build_cavity(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
@@ -816,15 +756,13 @@ pub(crate) fn build_cavity(
                 let c = nodes[tet[2]];
                 let d = nodes[tet[3]];
 
-                // Ensure positive orientation for insphere
                 let orient = neco_cdt::orient3d(a, b, c, d);
                 let in_sphere = if orient > 0.0 {
                     neco_cdt::insphere(a, b, c, d, point)
                 } else if orient < 0.0 {
-                    // Swap two vertices to flip orientation
                     neco_cdt::insphere(b, a, c, d, point)
                 } else {
-                    continue; // degenerate, skip
+                    continue;
                 };
 
                 if in_sphere > 0.0 {
@@ -837,7 +775,6 @@ pub(crate) fn build_cavity(
     cavity
 }
 
-/// Extract cavity boundary faces, oriented to form positive-volume tets with new node.
 fn extract_cavity_boundary(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
@@ -850,11 +787,6 @@ fn extract_cavity_boundary(
 
     for &ti in cavity {
         let tet = tets[ti];
-        // 4 faces matching tet_faces() ordering used by build_adjacency:
-        //   fi=0: (tet[0], tet[1], tet[2])
-        //   fi=1: (tet[0], tet[1], tet[3])
-        //   fi=2: (tet[0], tet[2], tet[3])
-        //   fi=3: (tet[1], tet[2], tet[3])
         let face_defs: [[usize; 3]; 4] = [
             [tet[0], tet[1], tet[2]],
             [tet[0], tet[1], tet[3]],
@@ -871,8 +803,6 @@ fn extract_cavity_boundary(
                 continue;
             }
 
-            // Orient face so tet [face, new_point] has positive signed volume.
-            // Inline signed volume computation (same formula as tet_signed_volume).
             let sv = {
                 let a = nodes[face[0]];
                 let b = nodes[face[1]];
@@ -887,15 +817,13 @@ fn extract_cavity_boundary(
             if sv > 0.0 {
                 boundary.push(*face);
             } else if sv < 0.0 {
-                boundary.push([face[1], face[0], face[2]]); // flip
+                boundary.push([face[1], face[0], face[2]]);
             }
-            // sv == 0: degenerate (point on face plane), skip
         }
     }
     boundary
 }
 
-/// Insert Steiner point via Bowyer-Watson. Returns new node index or None.
 pub fn insert_steiner_point(
     nodes: &mut Vec<[f64; 3]>,
     tets: &mut Vec<[usize; 4]>,
@@ -906,7 +834,7 @@ pub fn insert_steiner_point(
     insert_steiner_point_core(nodes, tets, point, containing, &adj)
 }
 
-/// Bowyer-Watson insertion with known containing tet.
+/// 生成した四面体の符号付き体積が `-1e-20` 以下なら、追加した頂点を戻して `None` を返します。
 fn insert_steiner_point_core(
     nodes: &mut Vec<[f64; 3]>,
     tets: &mut Vec<[usize; 4]>,
@@ -932,10 +860,9 @@ fn insert_steiner_point_core(
         .map(|face| [face[0], face[1], face[2], vi])
         .collect();
 
-    // Verify all new tets have positive volume; rollback if not
     for tet in &new_tets {
         if tet_signed_volume(nodes, tet) <= -1e-20 {
-            nodes.pop(); // Rollback
+            nodes.pop();
             return None;
         }
     }
@@ -983,7 +910,6 @@ fn try_flip_2_3(
         [shared.1, shared.2, apex_a, apex_b],
         [shared.0, shared.2, apex_a, apex_b],
     ];
-    // Check positive volume
     for t in &new_tets {
         if tet_signed_volume(nodes, t).abs() < 1e-30 {
             return None;
@@ -1003,7 +929,6 @@ fn try_flip_2_3(
 
 pub const ASPECT_RATIO_THRESHOLD: f64 = 15.0;
 
-/// 4-4 flip: rearrange 4 tets sharing an edge into a different diagonal configuration.
 pub(crate) fn try_flip_4_4(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
@@ -1013,7 +938,6 @@ pub(crate) fn try_flip_4_4(
         return None;
     }
 
-    // Count vertex occurrences
     let mut counts: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
     for &ti in tet_indices {
         for &v in &tets[ti] {
@@ -1021,7 +945,6 @@ pub(crate) fn try_flip_4_4(
         }
     }
 
-    // Shared edge vertices: appear 4 times
     let shared: Vec<usize> = counts
         .iter()
         .filter(|(_, &c)| c == 4)
@@ -1031,7 +954,6 @@ pub(crate) fn try_flip_4_4(
         return None;
     }
 
-    // Ring vertices: appear less than 4 times
     let ring: Vec<usize> = counts
         .iter()
         .filter(|(_, &c)| c < 4)
@@ -1046,20 +968,16 @@ pub(crate) fn try_flip_4_4(
     find_best_4_4_config(nodes, a, b, &ring)
 }
 
-/// Find best 4-4 flip configuration.
-///
-/// Tries 3 diagonal splits of the 4-vertex ring, returns best quality.
 fn find_best_4_4_config(
     nodes: &[[f64; 3]],
     a: usize,
     b: usize,
     ring: &[usize],
 ) -> Option<[[usize; 4]; 4]> {
-    // Try 3 diagonal splits of ring vertices
     let perms = [
-        ([ring[0], ring[1]], [ring[2], ring[3]]), // diagonal 0-1 vs 2-3
-        ([ring[0], ring[2]], [ring[1], ring[3]]), // diagonal 0-2 vs 1-3
-        ([ring[0], ring[3]], [ring[1], ring[2]]), // diagonal 0-3 vs 1-2
+        ([ring[0], ring[1]], [ring[2], ring[3]]),
+        ([ring[0], ring[2]], [ring[1], ring[3]]),
+        ([ring[0], ring[3]], [ring[1], ring[2]]),
     ];
 
     let mut best: Option<[[usize; 4]; 4]> = None;
@@ -1073,7 +991,6 @@ fn find_best_4_4_config(
             [b, diag[1], anti[0], anti[1]],
         ];
 
-        // All tets must have positive volume
         let all_positive = candidate
             .iter()
             .all(|t| tet_signed_volume(nodes, t).abs() > 1e-30);
@@ -1095,14 +1012,12 @@ fn find_best_4_4_config(
     best
 }
 
-/// Improve quality via 2-3, 3-2, and 4-4 flips.
 pub fn improve_quality_flips(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
     for _ in 0..30 {
         let adj = build_adjacency(tets);
         let edge_map = build_edge_to_tets(tets);
         let mut improved = false;
 
-        // Find worst sliver
         let worst_idx = (0..tets.len())
             .filter(|&i| tet_aspect_ratio(nodes, &tets[i]) > ASPECT_RATIO_THRESHOLD)
             .max_by(|&a, &b| {
@@ -1116,7 +1031,6 @@ pub fn improve_quality_flips(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
             None => break,
         };
 
-        // Try 2-3 flip on each face
         for &neighbor in adj[ti].iter().take(4) {
             if let Some(ni) = neighbor {
                 if let Some(new3) = try_flip_2_3(nodes, &tets[ti], &tets[ni]) {
@@ -1135,7 +1049,6 @@ pub fn improve_quality_flips(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
             continue;
         }
 
-        // Try 3-2 / 4-4 flip on each edge
         let tet = tets[ti];
         'edge_loop: for i in 0..4 {
             for j in (i + 1)..4 {
@@ -1191,7 +1104,6 @@ pub fn improve_quality_flips(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
     }
 }
 
-/// Legacy quality improvement via 2-3 flip only.
 #[deprecated(note = "use improve_quality_flips instead")]
 pub fn improve_quality_flip(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
     for _ in 0..10 {
@@ -1233,7 +1145,6 @@ pub fn improve_quality_flip(nodes: &[[f64; 3]], tets: &mut Vec<[usize; 4]>) {
     }
 }
 
-/// Edge -> sharing tet indices reverse map.
 pub(crate) fn build_edge_to_tets(
     tets: &[[usize; 4]],
 ) -> std::collections::HashMap<(usize, usize), Vec<usize>> {
@@ -1249,7 +1160,6 @@ pub(crate) fn build_edge_to_tets(
     map
 }
 
-/// 3-2 flip: inverse of 2-3 flip. Removes shared edge, creates new shared face.
 pub(crate) fn try_flip_3_2(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
@@ -1259,7 +1169,6 @@ pub(crate) fn try_flip_3_2(
         return None;
     }
 
-    // Count vertex occurrences
     let mut counts: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
     for &ti in tet_indices {
         for &v in &tets[ti] {
@@ -1267,7 +1176,6 @@ pub(crate) fn try_flip_3_2(
         }
     }
 
-    // Shared edge vertices appear 3 times, opposite vertices appear once each
     let shared: Vec<usize> = counts
         .iter()
         .filter(|(_, &c)| c == 3)
@@ -1289,17 +1197,14 @@ pub(crate) fn try_flip_3_2(
     let (a, b) = (shared[0], shared[1]);
     let (c, d, e) = (others[0], others[1], others[2]);
 
-    // New 2 tets: [c,d,e,a] and [c,d,e,b]
     let new_tets = [[c, d, e, a], [c, d, e, b]];
 
-    // Positive volume check
     for t in &new_tets {
         if tet_signed_volume(nodes, t).abs() < 1e-30 {
             return None;
         }
     }
 
-    // Quality improvement check
     let old_worst = tet_indices
         .iter()
         .map(|&i| tet_aspect_ratio(nodes, &tets[i]))
@@ -1316,7 +1221,6 @@ pub(crate) fn try_flip_3_2(
     }
 }
 
-/// Laplacian smoothing: move interior vertices to neighbor centroid.
 pub fn smooth_vertices(
     nodes: &mut [[f64; 3]],
     tets: &[[usize; 4]],
@@ -1349,14 +1253,12 @@ pub fn smooth_vertices(
     }
 }
 
-/// Detect boundary nodes (surface faces + clip planes).
 pub fn detect_boundary_nodes(
     nodes: &[[f64; 3]],
     tets: &[[usize; 4]],
     clip_planes: &[ClipPlane],
 ) -> std::collections::HashSet<usize> {
     use std::collections::HashMap;
-    // Vertices of exterior faces (appearing once)
     let mut face_counts: HashMap<(usize, usize, usize), u32> = HashMap::new();
     for tet in tets {
         for f in tet_faces(tet) {
@@ -1371,7 +1273,6 @@ pub fn detect_boundary_nodes(
             boundary.insert(*c);
         }
     }
-    // Vertices on clip planes are also immovable
     for (vi, node) in nodes.iter().enumerate() {
         for plane in clip_planes {
             let d = vec3::dot(vec3::sub(*node, plane.origin), plane.normal);
@@ -1384,7 +1285,6 @@ pub fn detect_boundary_nodes(
     boundary
 }
 
-/// 2+2 split: two vertices on each side.
 fn clip_tet_2_2(
     workspace: &mut TetClipWorkspace,
     classified: &[(Side, usize); 4],
@@ -1399,7 +1299,6 @@ fn clip_tet_2_2(
         }
     }
 
-    // 4 intersection points: one per pos-neg edge pair
     let p00 = {
         let pt = plane.intersect_edge(workspace.nodes[pos_verts[0]], workspace.nodes[neg_verts[0]]);
         workspace.add_node(pt)
@@ -1417,16 +1316,12 @@ fn clip_tet_2_2(
         workspace.add_node(pt)
     };
 
-    // Each side forms a prism decomposed into 3 tets
-
     let pos_tets = decompose_prism([pos_verts[0], p00, p01], [pos_verts[1], p10, p11]);
     let neg_tets = decompose_prism([neg_verts[0], p00, p10], [neg_verts[1], p01, p11]);
 
     (pos_tets, neg_tets)
 }
 
-/// Insert Steiner points at worst sliver centroids.
-/// Returns total number of inserted points.
 pub fn insert_steiner_points_for_slivers(
     nodes: &mut Vec<[f64; 3]>,
     tets: &mut Vec<[usize; 4]>,
@@ -1471,10 +1366,6 @@ pub fn insert_steiner_points_for_slivers(
     total_inserted
 }
 
-/// Remove slivers by collapsing shortest edges.
-///
-/// Merges two vertices to midpoint; boundary nodes are preserved.
-/// Returns number of slivers removed.
 pub fn collapse_slivers(
     nodes: &mut [[f64; 3]],
     tets: &mut Vec<[usize; 4]>,
@@ -1485,7 +1376,6 @@ pub fn collapse_slivers(
     let mut total_collapsed = 0;
 
     for _ in 0..max_collapses {
-        // Find worst sliver
         let worst = (0..tets.len())
             .filter(|&i| {
                 tet_signed_volume(nodes, &tets[i]).abs() > 1e-30
@@ -1504,7 +1394,6 @@ pub fn collapse_slivers(
 
         let tet = tets[si];
 
-        // Find shortest edge
         let edge_pairs = [
             (tet[0], tet[1]),
             (tet[0], tet[2]),
@@ -1519,7 +1408,6 @@ pub fn collapse_slivers(
             let l = vec3::length(vec3::sub(nodes[a], nodes[b]));
             if l < min_len {
                 min_len = l;
-                // Prefer keeping boundary nodes
                 if boundary_nodes.contains(&a) && !boundary_nodes.contains(&b) {
                     v_keep = a;
                     v_remove = b;
@@ -1530,20 +1418,15 @@ pub fn collapse_slivers(
             }
         }
 
-        // Both boundary: keep v_keep position; one boundary: keep boundary node
         if !boundary_nodes.contains(&v_keep) && !boundary_nodes.contains(&v_remove) {
-            // Both interior: move to midpoint
             nodes[v_keep] = [
                 (nodes[v_keep][0] + nodes[v_remove][0]) / 2.0,
                 (nodes[v_keep][1] + nodes[v_remove][1]) / 2.0,
                 (nodes[v_keep][2] + nodes[v_remove][2]) / 2.0,
             ];
         } else if boundary_nodes.contains(&v_keep) && boundary_nodes.contains(&v_remove) {
-            // Both boundary: keep v_keep position
         }
-        // v_keep is boundary, v_remove is interior -> keep v_keep position
 
-        // Replace all references to v_remove with v_keep
         for tet_ref in tets.iter_mut() {
             for v in tet_ref.iter_mut() {
                 if *v == v_remove {
@@ -1552,7 +1435,6 @@ pub fn collapse_slivers(
             }
         }
 
-        // Remove degenerate tets
         let before = tets.len();
         tets.retain(|t| !is_degenerate(t));
         let removed = before - tets.len();
@@ -1560,17 +1442,13 @@ pub fn collapse_slivers(
         if removed > 0 {
             total_collapsed += 1;
         } else {
-            break; // collapse didn't remove any tets
+            break;
         }
     }
 
     total_collapsed
 }
 
-/// Iterative interleaved quality improvement pipeline.
-///
-/// Each round applies steiner -> flips -> collapse -> smooth.
-/// Stops when sliver rate drops below target or max_rounds reached.
 pub fn improve_mesh_quality(
     nodes: &mut Vec<[f64; 3]>,
     tets: &mut Vec<[usize; 4]>,
@@ -1589,29 +1467,19 @@ pub fn improve_mesh_quality(
             break;
         }
 
-        // Steiner: inject interior nodes into worst slivers
         insert_steiner_points_for_slivers(nodes, tets, ASPECT_RATIO_THRESHOLD, 50);
 
-        // Flips: try 2-3, 3-2, 4-4 to rearrange topology
         improve_quality_flips(nodes, tets);
 
-        // Collapse: merge short edges of remaining slivers (4x steiner budget)
         let boundary = detect_boundary_nodes(nodes, tets, clip_planes);
         collapse_slivers(nodes, tets, &boundary, ASPECT_RATIO_THRESHOLD, 200);
 
-        // Smooth: move interior nodes to improve shape
         let boundary = detect_boundary_nodes(nodes, tets, clip_planes);
         smooth_vertices(nodes, tets, &boundary, 5);
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// clip_tet_surface: generic tet clipping via ClipSurface trait
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Clip a tet by a generic ClipSurface -> (positive, negative).
-///
-/// Multi-intersection edges trigger recursive subdivision.
+/// 四面体を切断し、正側と負側を返します。複数交点の辺は最初の交点で再帰分割し、深さ上限を超えると `TetClipError::NumericalInstability` を返します。
 #[allow(clippy::type_complexity)]
 pub fn clip_tet_surface(
     workspace: &mut TetClipWorkspace,
@@ -1621,6 +1489,7 @@ pub fn clip_tet_surface(
     clip_tet_surface_recursive(workspace, tet, surface, 0)
 }
 
+/// 複数交点の辺を分割する再帰の上限です。
 const MAX_RECURSION_DEPTH: usize = 10;
 
 #[allow(clippy::type_complexity)]
@@ -1648,7 +1517,6 @@ fn clip_tet_surface_recursive(
         .filter(|(s, _)| *s == Side::Negative)
         .count();
 
-    // All vertices on same side
     if n_neg == 0 {
         return Ok((vec![tet], vec![]));
     }
@@ -1656,7 +1524,6 @@ fn clip_tet_surface_recursive(
         return Ok((vec![], vec![tet]));
     }
 
-    // Collect intersection params for crossing edges (edges between opposite sides)
     let edges: [(usize, usize); 6] = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
 
     let mut has_multi_intersection = false;
@@ -1665,7 +1532,6 @@ fn clip_tet_surface_recursive(
     for &(ei, ej) in &edges {
         let si = classified[ei].0;
         let sj = classified[ej].0;
-        // Only process crossing edges (opposite sides)
         let is_crossing = (si == Side::Positive && sj == Side::Negative)
             || (si == Side::Negative && sj == Side::Positive);
         if !is_crossing {
@@ -1682,7 +1548,6 @@ fn clip_tet_surface_recursive(
     }
 
     if has_multi_intersection {
-        // Recursive split at first intersection of multi-intersection edge
         let Some((ei, ej, params)) = multi_edge else {
             return Err(TetClipError::NumericalInstability(
                 "multi-intersection edge flag set without edge parameters".into(),
@@ -1700,7 +1565,6 @@ fn clip_tet_surface_recursive(
         ];
         let split_idx = workspace.add_node(split_pt);
 
-        // Split tet: replace vertex at each end of the edge with split point
         let mut sub_a = tet;
         sub_a[ei] = split_idx;
         let mut sub_b = tet;
@@ -1721,7 +1585,6 @@ fn clip_tet_surface_recursive(
         return Ok((all_pos, all_neg));
     }
 
-    // Simple case: all crossing edges have 0 or 1 intersections
     let (pos, neg) = if n_pos == 1 {
         clip_tet_surface_1_3(workspace, &classified, surface, Side::Positive)
     } else if n_neg == 1 {
@@ -1735,7 +1598,6 @@ fn clip_tet_surface_recursive(
     Ok((pos, neg))
 }
 
-/// 1+3 split (ClipSurface version).
 fn clip_tet_surface_1_3(
     workspace: &mut TetClipWorkspace,
     classified: &[(Side, usize); 4],
@@ -1773,7 +1635,6 @@ fn clip_tet_surface_1_3(
                 ];
                 workspace.add_node(pt)
             } else {
-                // Fallback: midpoint (should not happen for valid crossing edges)
                 let mid = vec3::scale(vec3::add(a, b), 0.5);
                 workspace.add_node(mid)
             }
@@ -1790,7 +1651,6 @@ fn clip_tet_surface_1_3(
     }
 }
 
-/// 2+2 split (ClipSurface version).
 fn clip_tet_surface_2_2(
     workspace: &mut TetClipWorkspace,
     classified: &[(Side, usize); 4],
@@ -1837,7 +1697,6 @@ fn clip_tet_surface_2_2(
     (pos_tets, neg_tets)
 }
 
-/// Clip all tets by a surface, keeping the specified side.
 pub fn clip_by_surface(
     workspace: &mut TetClipWorkspace,
     surface: &dyn ClipSurface,
@@ -1858,7 +1717,6 @@ pub fn clip_by_surface(
     Ok(())
 }
 
-/// Generic subtract: keep positive (outside) tets, pass negative to next surface.
 pub fn clip_mesh_subtract_surfaces(
     workspace: &mut TetClipWorkspace,
     surfaces: &[Box<dyn ClipSurface>],
@@ -1875,13 +1733,11 @@ pub fn clip_mesh_subtract_surfaces(
         }
         candidates = next_candidates;
     }
-    // Remaining candidates are inside operand -> discard
 
     workspace.tets = kept;
     Ok(())
 }
 
-/// Generic intersect: keep only negative (inside) tets.
 pub fn clip_mesh_intersect_surfaces(
     workspace: &mut TetClipWorkspace,
     surfaces: &[Box<dyn ClipSurface>],
@@ -1892,7 +1748,6 @@ pub fn clip_mesh_intersect_surfaces(
     Ok(())
 }
 
-/// Convert Surface enum to ClipSurface trait object.
 pub fn surface_to_clip_surface(surface: &Surface) -> Option<Box<dyn ClipSurface>> {
     match surface {
         Surface::Plane { origin, normal } => {
@@ -1935,7 +1790,6 @@ pub fn surface_to_clip_surface(surface: &Surface) -> Option<Box<dyn ClipSurface>
     }
 }
 
-/// Generate summary string of surface types.
 pub fn summarize_surfaces(operand: &Shell) -> String {
     let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for face in &operand.faces {
@@ -1968,35 +1822,25 @@ mod tests {
     fn build_edge_to_tets_basic() {
         let tets = vec![[0, 1, 2, 3], [0, 1, 2, 4]];
         let map = build_edge_to_tets(&tets);
-        // edge (0,1) is in both tets
         assert_eq!(map[&(0, 1)].len(), 2);
-        // edge (0,2) is in both tets
         assert_eq!(map[&(0, 2)].len(), 2);
-        // edge (2,3) is in tet 0 only
         assert_eq!(map[&(2, 3)].len(), 1);
-        // edge (2,4) is in tet 1 only
         assert_eq!(map[&(2, 4)].len(), 1);
     }
 
     #[test]
     fn flip_3_2_basic() {
-        // 3 tets sharing edge (0,1):
-        //   [0,1,2,3], [0,1,3,4], [0,1,4,2]
-        // opposite vertices are 2,3,4 -> can flip to [2,3,4,0] and [2,3,4,1]
         let nodes: Vec<[f64; 3]> = vec![
-            [0.0, 0.0, 0.0],   // 0: shared
-            [0.0, 0.0, 2.0],   // 1: shared
-            [1.0, 0.0, 1.0],   // 2
-            [-0.5, 1.0, 1.0],  // 3
-            [-0.5, -1.0, 1.0], // 4
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 2.0],
+            [1.0, 0.0, 1.0],
+            [-0.5, 1.0, 1.0],
+            [-0.5, -1.0, 1.0],
         ];
         let tets = vec![[0, 1, 2, 3], [0, 1, 3, 4], [0, 1, 4, 2]];
         let tet_indices = vec![0, 1, 2];
 
-        // try_flip_3_2 should not panic
         let result = try_flip_3_2(&nodes, &tets, &tet_indices);
-        // Returns Some only if quality improves
-        // Verify volume conservation
         if let Some(new_tets) = result {
             assert_eq!(new_tets.len(), 2);
             let old_vol: f64 = tet_indices
@@ -2023,14 +1867,12 @@ mod tests {
             [0.0, 0.0, 1.0],
         ];
         let tets = vec![[0, 1, 2, 3]];
-        // None if tet count != 3
         assert!(try_flip_3_2(&nodes, &tets, &[0]).is_none());
         assert!(try_flip_3_2(&nodes, &tets, &[]).is_none());
     }
 
     #[test]
     fn edge_to_tets_finds_ring() {
-        // build_edge_to_tets should find 3 tets around edge (0,1)
         let tets = vec![[0, 1, 2, 3], [0, 1, 3, 4], [0, 1, 4, 2]];
         let map = build_edge_to_tets(&tets);
         let ring = &map[&(0, 1)];
@@ -2076,17 +1918,13 @@ mod tests {
     #[test]
     fn test_clip_torus_signed_distance() {
         let torus = ClipTorus::new([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 2.0, 0.5);
-        // Point on the tube center ring (2, 0, 0) → distance = -0.5 (inside)
         assert!((torus.signed_distance([2.0, 0.0, 0.0]) - (-0.5)).abs() < 1e-12);
-        // Far point → positive
         assert!(torus.signed_distance([5.0, 0.0, 0.0]) > 0.0);
     }
 
     #[test]
     fn test_clip_torus_intersect_edge_through() {
         let torus = ClipTorus::new([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 2.0, 0.5);
-        // X-axis edge through torus → should have 4 intersections
-        // At x = -2.5, -1.5, 1.5, 2.5 → t = (x+3)/6
         let ts = torus.intersect_edge_surface([-3.0, 0.0, 0.0], [3.0, 0.0, 0.0]);
         assert_eq!(
             ts.len(),
@@ -2112,7 +1950,6 @@ mod tests {
         let (pos, neg) = clip_tet_surface(&mut ws, [0, 1, 2, 3], &sphere).unwrap();
         assert!(!neg.is_empty(), "inside tets empty");
         assert!(!pos.is_empty(), "outside tets empty");
-        // Volume conservation
         let vol_orig = tet_volume(&ws.nodes, &[0, 1, 2, 3]);
         let vol_pos: f64 = pos.iter().map(|t| tet_volume(&ws.nodes, t)).sum();
         let vol_neg: f64 = neg.iter().map(|t| tet_volume(&ws.nodes, t)).sum();
@@ -2124,7 +1961,6 @@ mod tests {
 
     #[test]
     fn test_clip_tet_surface_plane_matches_clip_tet() {
-        // Use ClipPlane via clip_tet_surface to get same result as clip_tet
         let plane = ClipPlane::from_origin_normal([0.5, 0.0, 0.0], [1.0, 0.0, 0.0]);
         let mut ws = TetClipWorkspace::new(
             vec![

@@ -1,10 +1,5 @@
-//! Blake2b hash function (RFC 7693).
-//!
-//! Used internally by Argon2id as the mixing hash function.
-//! Supports variable output length from 1 to 64 bytes.
+//! RFC 7693 の Blake2b と、RFC 9106 3.2 節の可変長ハッシュを実装します。
 
-/// Blake2b initialization vector (first 64 bits of fractional parts of sqrt of primes 2..19).
-/// RFC 7693, Section 2.6.
 const IV: [u64; 8] = [
     0x6a09e667f3bcc908,
     0xbb67ae8584caa73b,
@@ -16,7 +11,6 @@ const IV: [u64; 8] = [
     0x5be0cd19137e2179,
 ];
 
-/// Blake2b σ permutation table (RFC 7693, Section 2.7).
 const SIGMA: [[usize; 16]; 12] = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
@@ -32,7 +26,6 @@ const SIGMA: [[usize; 16]; 12] = [
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
 ];
 
-/// Blake2b G mixing function (RFC 7693, Section 3.1).
 #[inline(always)]
 fn g(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize, x: u64, y: u64) {
     v[a] = v[a].wrapping_add(v[b]).wrapping_add(x);
@@ -45,7 +38,6 @@ fn g(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize, x: u64, y: u64) 
     v[b] = (v[b] ^ v[c]).rotate_right(63);
 }
 
-/// Blake2b compression function F (RFC 7693, Section 3.2).
 pub fn compress(h: &mut [u64; 8], m: &[u64; 16], t: [u64; 2], last_block: bool) {
     let mut v = [0u64; 16];
     v[0..8].copy_from_slice(h);
@@ -78,9 +70,7 @@ pub fn compress(h: &mut [u64; 8], m: &[u64; 16], t: [u64; 2], last_block: bool) 
     }
 }
 
-/// Core Blake2b hash: variable output length (1..=64 bytes), optional key (0..=64 bytes).
-///
-/// RFC 7693, Section 2.
+/// 1 バイトから 64 バイトまでの Blake2b ハッシュを返します。出力長がこの範囲外、または鍵が 64 バイトを超える場合は panic します。鍵を使う場合は 128 バイトへ零埋めした鍵ブロックを先頭に置き、入力が空なら鍵ブロックを最終ブロックとして扱います。
 pub fn blake2b(input: &[u8], key: &[u8], output_len: usize) -> Vec<u8> {
     assert!((1..=64).contains(&output_len), "output_len must be 1..=64");
     assert!(key.len() <= 64, "key length must be <= 64");
@@ -88,20 +78,16 @@ pub fn blake2b(input: &[u8], key: &[u8], output_len: usize) -> Vec<u8> {
     let kk = key.len();
     let nn = output_len;
 
-    // Parameter block p[0]: fan-out=1, max depth=1, leaf length=0, etc.
-    // h[0] ^= 0x01010000 ^ (kk << 8) ^ nn
     let mut h = IV;
     h[0] ^= 0x01010000u64 ^ ((kk as u64) << 8) ^ (nn as u64);
 
     let mut counter: u64 = 0;
 
-    // If key is provided, pad to 128 bytes and prepend as first block.
     if kk > 0 {
         let mut block = [0u8; 128];
         block[..kk].copy_from_slice(key);
 
         if input.is_empty() {
-            // Key block is the only (last) block.
             counter = 128;
             let m = bytes_to_words(&block);
             compress(&mut h, &m, [counter, 0], true);
@@ -113,13 +99,10 @@ pub fn blake2b(input: &[u8], key: &[u8], output_len: usize) -> Vec<u8> {
         }
     }
 
-    // Process message blocks.
-    // Each block is 128 bytes. The last block must be flagged.
     let mut offset = 0;
     let len = input.len();
 
     if len == 0 {
-        // Empty message, no key: compress one zero block as the last.
         let m = [0u64; 16];
         compress(&mut h, &m, [0, 0], true);
         return finalize(&h, nn);
@@ -162,41 +145,32 @@ fn finalize(h: &[u64; 8], nn: usize) -> Vec<u8> {
     out
 }
 
-/// Blake2b with variable output length > 64 bytes (Argon2 internal use).
-///
-/// RFC 9106, Section 3.2: H' (variable-length hash).
-/// For output_len <= 64, this is identical to blake2b().
-/// For output_len > 64, it fans out into multiple Blake2b hashes.
+/// RFC 9106 の H' 可変長連鎖でハッシュを返します。出力長が 64 バイト以下では長さを先頭に付加して Blake2b を一回用い、64 バイト超では 32 バイトずつ連鎖して末尾を必要な長さにします。出力長が 0 の場合は panic します。
 pub fn blake2b_long(input: &[u8], output_len: usize) -> Vec<u8> {
     assert!(output_len >= 1);
 
     if output_len <= 64 {
-        // Prepend output_len as 4-byte LE integer.
         let mut msg = Vec::with_capacity(4 + input.len());
         msg.extend_from_slice(&(output_len as u32).to_le_bytes());
         msg.extend_from_slice(input);
         return blake2b(&msg, &[], output_len);
     }
 
-    // r = ceil(output_len / 32) - 2
     let r = output_len.div_ceil(32) - 2;
     let mut out = Vec::with_capacity(output_len);
 
-    // a[1] = Blake2b(LE32(output_len) || input, 64)
     let mut msg = Vec::with_capacity(4 + input.len());
     msg.extend_from_slice(&(output_len as u32).to_le_bytes());
     msg.extend_from_slice(input);
     let mut a_prev = blake2b(&msg, &[], 64);
     out.extend_from_slice(&a_prev[..32]);
 
-    // a[i] = Blake2b(a[i-1], 64) for i = 2..=r
     for _ in 1..r {
         let a_i = blake2b(&a_prev, &[], 64);
         out.extend_from_slice(&a_i[..32]);
         a_prev = a_i;
     }
 
-    // a[r+1] = Blake2b(a[r], remaining)
     let remaining = output_len - 32 * r;
     let a_last = blake2b(&a_prev, &[], remaining);
     out.extend_from_slice(&a_last);
@@ -208,8 +182,6 @@ pub fn blake2b_long(input: &[u8], output_len: usize) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// RFC 7693 Appendix A: Blake2b-512 test vector.
-    /// Input: "abc", no key.
     #[test]
     fn test_blake2b_rfc7693_abc() {
         let input = b"abc";
@@ -223,7 +195,6 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    /// RFC 7693 Appendix A: Blake2b-512, empty input, no key.
     #[test]
     fn test_blake2b_empty() {
         let result = blake2b(&[], &[], 64);

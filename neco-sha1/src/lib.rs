@@ -1,4 +1,4 @@
-// SHA-1 per RFC 3174
+//! RFC 3174 に基づく SHA-1 ハッシュ関数。
 
 const H0: [u32; 5] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
 
@@ -55,7 +55,7 @@ fn compress(state: &mut [u32; 5], block: &[u8; 64]) {
     state[4] = state[4].wrapping_add(e);
 }
 
-/// SHA-1 ハッシュコンテキスト。`new()` で生成し `update()` でデータを投入、`finalize()` でダイジェストを得る。
+/// RFC 3174 の SHA-1 状態。入力は `update` で追加し、`finalize` は 20 バイトのダイジェストを返す。
 pub struct Sha1 {
     state: [u32; 5],
     buf: [u8; 64],
@@ -64,7 +64,7 @@ pub struct Sha1 {
 }
 
 impl Sha1 {
-    /// 新しいハッシュコンテキストを返す。
+    /// 初期状態の SHA-1 コンテキストを返す。
     pub fn new() -> Self {
         Self {
             state: H0,
@@ -153,8 +153,6 @@ mod tests {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 
-    // RFC 3174 §7.3 テストベクタ
-
     #[test]
     fn empty() {
         assert_eq!(
@@ -203,7 +201,6 @@ mod tests {
 
     #[test]
     fn block_boundary_55_bytes() {
-        // 55 bytes: パディング後 0x80 が 56 バイト目に来て同一ブロックに収まる
         let data = vec![b'a'; 55];
         let oneshot = Sha1::digest(&data);
         let mut h = Sha1::new();
@@ -213,7 +210,6 @@ mod tests {
 
     #[test]
     fn block_boundary_56_bytes() {
-        // 56 bytes: パディングが 2 ブロックにまたがる
         let data = vec![b'a'; 56];
         let oneshot = Sha1::digest(&data);
         let mut h = Sha1::new();

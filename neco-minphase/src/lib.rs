@@ -1,5 +1,4 @@
-use neco_complex::Complex;
-use neco_stft::{DspFloat, FftError};
+use neco_stft::{Complex, DspFloat, FftError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MinPhaseError {
@@ -194,8 +193,7 @@ pub fn compute_blend_curve(
 mod tests {
     use std::f64::consts::PI;
 
-    use neco_complex::Complex;
-    use neco_stft::{cast_vec, DspFloat};
+    use neco_stft::{cast_vec, Complex, DspFloat};
 
     use super::*;
 

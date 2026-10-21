@@ -6,7 +6,6 @@ pub(crate) mod sweep_intersect;
 pub mod tet_clip;
 pub mod tolerance;
 
-/// Events emitted during boolean processing
 #[derive(Debug, Clone)]
 pub enum BooleanEvent {
     Info(String),
@@ -24,9 +23,7 @@ use crate::brep::{Shell, SubFace};
 use crate::types::BooleanOp;
 use crate::vec3;
 
-/// 3D boolean operation orchestrator
 pub fn boolean_3d(a: &Shell, b: &Shell, op: BooleanOp) -> Result<Shell, String> {
-    // 1. Collect face-face intersection curves
     let na = a.faces.len();
     let nb = b.faces.len();
     let mut cuts_a = vec![Vec::new(); na];
@@ -55,7 +52,6 @@ pub fn boolean_3d(a: &Shell, b: &Shell, op: BooleanOp) -> Result<Shell, String> 
         return handle_no_intersection(a, b, op);
     }
 
-    // 2. Split faces
     let sub_a: Vec<SubFace> = a
         .faces
         .iter()
@@ -74,7 +70,6 @@ pub fn boolean_3d(a: &Shell, b: &Shell, op: BooleanOp) -> Result<Shell, String> 
         return handle_no_intersection(a, b, op);
     }
 
-    // 3. Select faces
     let selected = normalize_selected_subfaces(select_faces(&sub_a, &sub_b, a, b, op));
     if selected.is_empty() {
         return match op {
@@ -83,7 +78,6 @@ pub fn boolean_3d(a: &Shell, b: &Shell, op: BooleanOp) -> Result<Shell, String> 
         };
     }
 
-    // 4. Build shell
     build_shell_from_subfaces(&selected, a, b)
 }
 
@@ -208,7 +202,6 @@ fn handle_no_intersection(a: &Shell, b: &Shell, op: BooleanOp) -> Result<Shell, 
         }
         BooleanOp::Subtract => {
             if b_in_a {
-                // B contained in A -> A outer + B inner (flipped)
                 let sub_a: Vec<SubFace> = a
                     .faces
                     .iter()

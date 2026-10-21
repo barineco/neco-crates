@@ -8,17 +8,13 @@ use super::BooleanEvent;
 const CLIP_TOL: f64 = GEO_TOL;
 type PolygonSplit3D = (Vec<[f64; 3]>, Vec<[f64; 3]>);
 
-/// Newton closest-point projection onto a NURBS surface.
-///
-/// Uses Bezier patch decomposition for initial guess to avoid seam convergence issues.
+/// 近い Bézier パッチを標本化し、Newton 法で近似した NURBS 曲面上のパラメータを返します。
 pub(crate) fn project_to_nurbs(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, f64) {
     let patches = decompose_to_bezier_patches(surface);
     if patches.is_empty() {
-        // Fallback: global grid search if patch decomposition fails
         return project_to_nurbs_global(surface, p);
     }
 
-    // Compute squared distance from point to each patch AABB
     let mut patch_dists: Vec<(usize, f64)> = patches
         .iter()
         .enumerate()
@@ -30,7 +26,6 @@ pub(crate) fn project_to_nurbs(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, 
         .collect();
     patch_dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Try top 3 patches (or fewer) for initial guess + Newton
     let n_candidates = patch_dists.len().min(3);
     let mut best_u = 0.0;
     let mut best_v = 0.0;
@@ -44,7 +39,6 @@ pub(crate) fn project_to_nurbs(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, 
         let pv_min = patch.v_min;
         let pv_max = patch.v_max;
 
-        // Grid sampling within patch for initial guess
         let mut init_u = (pu_min + pu_max) * 0.5;
         let mut init_v = (pv_min + pv_max) * 0.5;
         let mut init_dist_sq = f64::INFINITY;
@@ -64,7 +58,6 @@ pub(crate) fn project_to_nurbs(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, 
             }
         }
 
-        // Newton iteration clamped to patch u/v range
         let (u, v, dist_sq) =
             newton_project(surface, p, init_u, init_v, pu_min, pu_max, pv_min, pv_max);
         if dist_sq < best_dist_sq {
@@ -77,7 +70,6 @@ pub(crate) fn project_to_nurbs(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, 
     (best_u, best_v)
 }
 
-/// Squared distance from AABB to point
 fn aabb_point_dist_sq(bb_min: &[f64; 3], bb_max: &[f64; 3], p: &[f64; 3]) -> f64 {
     let dx = if p[0] < bb_min[0] {
         bb_min[0] - p[0]
@@ -103,7 +95,6 @@ fn aabb_point_dist_sq(bb_min: &[f64; 3], bb_max: &[f64; 3], p: &[f64; 3]) -> f64
     dx * dx + dy * dy + dz * dz
 }
 
-/// Gauss-Newton closest-point projection with clampable range.
 #[allow(clippy::too_many_arguments)]
 fn newton_project(
     surface: &NurbsSurface3D,
@@ -152,7 +143,6 @@ fn newton_project(
     (u, v, dist_sq)
 }
 
-/// Fallback: global 8x8 grid search + Newton
 fn project_to_nurbs_global(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, f64) {
     let (u_min, u_max) = surface.u_range();
     let (v_min, v_max) = surface.v_range();
@@ -181,25 +171,29 @@ fn project_to_nurbs_global(surface: &NurbsSurface3D, p: &[f64; 3]) -> (f64, f64)
     (u, v)
 }
 
-// ─── Analytic surface intersection ───
-
+/// 解析的な曲面交差の分類です。
 #[derive(Debug, Clone)]
 pub enum SurfaceIntersection {
+    /// 一点と方向で表す直線です。
     Line {
         point: [f64; 3],
         direction: [f64; 3],
     },
+    /// 二つの平面が一致します。
     Coplanar,
+    /// 中心、軸、半径で表す円です。
     Circle {
         center: [f64; 3],
         axis: [f64; 3],
         radius: f64,
     },
+    /// 中心と二つの半軸で表す楕円です。
     Ellipse {
         center: [f64; 3],
         axis_u: [f64; 3],
         axis_v: [f64; 3],
     },
+    /// 二本の直線です。接平面では同じ直線を二要素に入れる場合があります。
     TwoLines {
         line1_point: [f64; 3],
         line1_dir: [f64; 3],
@@ -208,7 +202,7 @@ pub enum SurfaceIntersection {
     },
 }
 
-/// Plane-plane intersection. Returns None if parallel, Coplanar if coincident, else a line.
+/// 二平面の交差を直線または同一平面として返し、平行な別平面では `None` を返します。
 pub fn plane_plane_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersection> {
     let (oa, na) = match a {
         Surface::Plane { origin, normal } => (origin, normal),
@@ -223,7 +217,6 @@ pub fn plane_plane_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersec
     let dir_len = vec3::length(dir);
 
     if dir_len < CLIP_TOL {
-        // Parallel -- check coplanarity: (ob - oa) * na ~ 0
         let d = vec3::dot(vec3::sub(*ob, *oa), *na);
         if d.abs() < CLIP_TOL {
             return Some(SurfaceIntersection::Coplanar);
@@ -233,11 +226,9 @@ pub fn plane_plane_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersec
 
     let direction = vec3::scale(dir, 1.0 / dir_len);
 
-    // Find a point on the intersection line by solving in 2 components orthogonal to dir
     let da = vec3::dot(*na, *oa);
     let db = vec3::dot(*nb, *ob);
 
-    // Drop largest dir component and solve 2x2 system
     let abs_dir = [direction[0].abs(), direction[1].abs(), direction[2].abs()];
     let drop_axis = if abs_dir[0] >= abs_dir[1] && abs_dir[0] >= abs_dir[2] {
         0
@@ -247,7 +238,6 @@ pub fn plane_plane_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersec
         2
     };
 
-    // 2x2 system: [na_i na_j; nb_i nb_j] [pi; pj] = [da; db]
     let (na_i, na_j, nb_i, nb_j) = match drop_axis {
         0 => (na[1], na[2], nb[1], nb[2]),
         1 => (na[0], na[2], nb[0], nb[2]),
@@ -267,8 +257,8 @@ pub fn plane_plane_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersec
     Some(SurfaceIntersection::Line { point, direction })
 }
 
-/// Plane-cylinder intersection.
-/// Perpendicular -> Circle, parallel -> TwoLines, oblique -> Ellipse.
+/// 平面と円柱の交差を円、楕円、または一組の直線として返します。
+/// 円柱軸と平行な接平面では、同じ直線を `TwoLines` の両要素に入れます。
 pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<SurfaceIntersection> {
     let (origin_p, normal_p) = match plane {
         Surface::Plane { origin, normal } => (origin, normal),
@@ -286,7 +276,6 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
 
     let n_dot_a = vec3::dot(*normal_p, axis_n);
 
-    // Case 1: perpendicular (|normal * axis| ~ 1)
     if n_dot_a.abs() > 1.0 - CLIP_TOL {
         let t = vec3::dot(*normal_p, vec3::sub(*origin_p, *origin_c)) / n_dot_a;
         let center = vec3::add(*origin_c, vec3::scale(axis_n, t));
@@ -297,21 +286,17 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
         });
     }
 
-    // Case 2: parallel (|normal * axis| ~ 0)
     if n_dot_a.abs() < CLIP_TOL {
-        // Signed distance from axis to plane
         let d = vec3::dot(*normal_p, vec3::sub(*origin_c, *origin_p));
         let abs_d = d.abs();
 
         if abs_d > radius + CLIP_TOL {
-            return None; // No intersection
+            return None;
         }
 
-        // Line direction: axis itself
         let line_dir = axis_n;
 
         if (abs_d - radius).abs() < CLIP_TOL {
-            // Tangent: single line
             let offset = vec3::scale(*normal_p, -d.signum() * radius);
             let pt = vec3::add(*origin_c, offset);
             return Some(SurfaceIntersection::TwoLines {
@@ -322,13 +307,11 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
             });
         }
 
-        // Two parallel lines on cross-section
         let n_perp = vec3::normalized(*normal_p);
         let lateral = vec3::normalized(vec3::cross(axis_n, n_perp));
 
-        // Cross-section: offset d in normal direction, +/-sqrt(r^2-d^2) laterally
         let h = (radius * radius - d * d).sqrt();
-        let base = vec3::add(*origin_c, vec3::scale(n_perp, -d)); // Offset -d in normal direction
+        let base = vec3::add(*origin_c, vec3::scale(n_perp, -d));
         let p1 = vec3::add(base, vec3::scale(lateral, h));
         let p2 = vec3::sub(base, vec3::scale(lateral, h));
 
@@ -340,7 +323,6 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
         });
     }
 
-    // Case 3: oblique -> ellipse
     let u = {
         let candidate = if axis_n[0].abs() < 0.9 {
             [1.0, 0.0, 0.0]
@@ -352,7 +334,6 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
     };
     let v = vec3::normalized(vec3::cross(axis_n, u));
 
-    // P(θ) = origin_c + h*axis + cos(θ)*(r*u + α*axis) + sin(θ)*(r*v + β*axis)
     let h = vec3::dot(*normal_p, vec3::sub(*origin_p, *origin_c)) / n_dot_a;
     let alpha = -radius * vec3::dot(*normal_p, u) / n_dot_a;
     let beta = -radius * vec3::dot(*normal_p, v) / n_dot_a;
@@ -368,7 +349,7 @@ pub fn plane_cylinder_intersect(plane: &Surface, cyl: &Surface) -> Option<Surfac
     })
 }
 
-/// Plane-sphere intersection. Returns Circle or None.
+/// 平面と球の交差円を返し、交差しない場合は `None` を返します。
 pub fn plane_sphere_intersect(plane: &Surface, sphere: &Surface) -> Option<SurfaceIntersection> {
     let (origin_p, normal) = match plane {
         Surface::Plane { origin, normal } => (origin, normal),
@@ -378,7 +359,6 @@ pub fn plane_sphere_intersect(plane: &Surface, sphere: &Surface) -> Option<Surfa
         Surface::Sphere { center, radius } => (center, *radius),
         _ => return None,
     };
-    // Signed distance from sphere center to plane
     let d = vec3::dot(*normal, vec3::sub(*center, *origin_p));
     if d.abs() > radius + CLIP_TOL {
         return None;
@@ -392,7 +372,7 @@ pub fn plane_sphere_intersect(plane: &Surface, sphere: &Surface) -> Option<Surfa
     })
 }
 
-/// Sphere x Sphere intersection (analytic circle).
+/// 二球の交差円を返します。接触、包含、同心、分離では `None` を返します。
 pub fn sphere_sphere_intersect(a: &Surface, b: &Surface) -> Option<SurfaceIntersection> {
     let (c1, r1) = match a {
         Surface::Sphere { center, radius } => (center, *radius),
@@ -405,15 +385,12 @@ pub fn sphere_sphere_intersect(a: &Surface, b: &Surface) -> Option<SurfaceInters
     let diff = vec3::sub(*c2, *c1);
     let d = vec3::length(diff);
 
-    // Same center and radius -> coincident
     if d < CLIP_TOL && (r1 - r2).abs() < CLIP_TOL {
         return None;
     }
-    // Too far apart -> no intersection
     if d > r1 + r2 - CLIP_TOL {
         return None;
     }
-    // Containment -> no intersection
     if d < (r1 - r2).abs() + CLIP_TOL {
         return None;
     }
@@ -434,7 +411,7 @@ pub fn sphere_sphere_intersect(a: &Surface, b: &Surface) -> Option<SurfaceInters
     })
 }
 
-/// Plane x Ellipsoid intersection (analytic ellipse).
+/// 平面と楕円体の非退化な交差楕円を返します。
 pub fn plane_ellipsoid_intersect(
     plane: &Surface,
     ellipsoid: &Surface,
@@ -447,13 +424,11 @@ pub fn plane_ellipsoid_intersect(
         Surface::Ellipsoid { center, rx, ry, rz } => (center, *rx, *ry, *rz),
         _ => return None,
     };
-    // Scale to unit sphere space
     let sc = [
         (center[0] - origin_p[0]) / rx,
         (center[1] - origin_p[1]) / ry,
         (center[2] - origin_p[2]) / rz,
     ];
-    // Covariant normal in scaled space
     let sn = [normal[0] * rx, normal[1] * ry, normal[2] * rz];
     let sn_len = vec3::length(sn);
     if sn_len < 1e-30 {
@@ -461,24 +436,20 @@ pub fn plane_ellipsoid_intersect(
     }
     let sn_hat = vec3::scale(sn, 1.0 / sn_len);
 
-    // Distance from sphere center to plane in scaled space
     let d = vec3::dot(sn_hat, sc);
     if d.abs() > 1.0 + CLIP_TOL {
         return None;
     }
 
-    // Intersection circle in scaled space
     let circle_r = (1.0 - d * d).max(0.0).sqrt();
     if circle_r < 1e-12 {
-        return None; // Tangent point only -- degenerate, skip
+        return None;
     }
     let circle_c_s = vec3::sub(sc, vec3::scale(sn_hat, d));
 
-    // Circle basis vectors in scaled space
     let u_s = perpendicular_unit(&sn_hat);
     let v_s = vec3::cross(sn_hat, u_s);
 
-    // Transform back to original space
     let ellipse_center = [
         origin_p[0] + circle_c_s[0] * rx,
         origin_p[1] + circle_c_s[1] * ry,
@@ -494,7 +465,6 @@ pub fn plane_ellipsoid_intersect(
     })
 }
 
-/// Plane-Ellipsoid face intersection
 fn plane_ellipsoid_face_intersection(
     plane_face: &Face,
     plane_shell: &Shell,
@@ -525,9 +495,7 @@ fn plane_ellipsoid_face_intersection(
     }
 }
 
-/// Plane x Cone analytic intersection.
-///
-/// Classifies conic section by angle between plane normal and cone axis.
+/// 平面と有限円錐の交差を分類します。退化した点交差は空の結果として返します。
 pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<SurfaceIntersection>> {
     let (origin_p, normal_p) = match plane {
         Surface::Plane { origin, normal } => (origin, vec3::normalized(*normal)),
@@ -550,37 +518,31 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
     let sin_a = half_angle.sin();
     let cos_a = half_angle.cos();
 
-    // Angle between plane normal and cone axis
     let n_dot_a = vec3::dot(normal_p, axis_n);
-    let beta = n_dot_a.abs().acos(); // β ∈ [0, π/2]
+    let beta = n_dot_a.abs().acos();
 
-    // Signed distance from cone apex to plane
     let d_apex = vec3::dot(normal_p, vec3::sub(*origin_c, *origin_p));
 
-    // Apex on plane -> two generator lines or empty
     if d_apex.abs() < GEO_TOL {
-        // Two generators if beta > alpha, degenerate if beta = alpha
         if beta < half_angle - GEO_TOL {
-            return Some(vec![]); // Apex only -> no finite intersection
+            return Some(vec![]);
         }
-
-        // Find cone generator directions on the plane
 
         let e1 = perpendicular_unit(&axis_n);
         let e2 = vec3::normalized(vec3::cross(axis_n, e1));
 
-        let c_coeff = cos_a * n_dot_a; // cos(α)·(n·a)
-        let a_coeff = sin_a * vec3::dot(normal_p, e1); // sin(α)·(n·e1)
-        let b_coeff = sin_a * vec3::dot(normal_p, e2); // sin(α)·(n·e2)
+        let c_coeff = cos_a * n_dot_a;
+        let a_coeff = sin_a * vec3::dot(normal_p, e1);
+        let b_coeff = sin_a * vec3::dot(normal_p, e2);
 
         let amplitude = (a_coeff * a_coeff + b_coeff * b_coeff).sqrt();
         if amplitude < GEO_TOL {
-            return Some(vec![]); // Degenerate
+            return Some(vec![]);
         }
 
         let ratio = -c_coeff / amplitude;
         if ratio.abs() > 1.0 + GEO_TOL {
-            return Some(vec![]); // No solution
+            return Some(vec![]);
         }
         let ratio_clamped = ratio.clamp(-1.0, 1.0);
         let delta = b_coeff.atan2(a_coeff);
@@ -611,16 +573,13 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
         }]);
     }
 
-    // Apex not on plane: classify the conic
-
-    // beta ~ 0: plane perpendicular to axis -> circle
     if beta < GEO_TOL {
         if n_dot_a.abs() < GEO_TOL {
             return None;
         }
         let t = -d_apex / n_dot_a;
         if t < -GEO_TOL || t > axis_len + GEO_TOL {
-            return None; // Outside cone range
+            return None;
         }
         let r = t * half_angle.tan();
         let center = vec3::add(*origin_c, vec3::scale(axis_n, t));
@@ -631,15 +590,10 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
         }]);
     }
 
-    // General case: eigenvalue decomposition of implicit matrix
-
-    // Orthonormal basis on plane
     let (pl_u, pl_w) = orthonormal_basis(normal_p);
-    // Origin on plane (closest to cone apex)
     let p0 = vec3::add(*origin_c, vec3::scale(normal_p, -d_apex));
 
-    // Build quadratic form coefficients of cone implicit
-    let q0 = vec3::sub(p0, *origin_c); // P0 - apex
+    let q0 = vec3::sub(p0, *origin_c);
     let q0_dot_a = vec3::dot(q0, axis_n);
     let u_dot_a = vec3::dot(pl_u, axis_n);
     let w_dot_a = vec3::dot(pl_w, axis_n);
@@ -658,7 +612,6 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
 
     let coeff_f = q0_dot_a * q0_dot_a - cos2a * q0_sq;
 
-    // 2x2 eigenvalue decomposition
     let trace = m00 + m11;
     let disc_m = (m00 - m11) * (m00 - m11) + 4.0 * m01 * m01;
     let sqrt_disc = disc_m.max(0.0).sqrt();
@@ -666,17 +619,13 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
     let lambda1 = (trace + sqrt_disc) / 2.0;
     let lambda2 = (trace - sqrt_disc) / 2.0;
 
-    // Ellipse: both eigenvalues have same sign and nonzero
     if lambda1.abs() < GEO_TOL || lambda2.abs() < GEO_TOL {
-        // Parabola case: sampling fallback
         return None;
     }
     if lambda1 * lambda2 < 0.0 {
-        // Hyperbola case: sampling fallback
         return None;
     }
 
-    // Compute eigenvectors
     let (v1x, v1y) = if m01.abs() > GEO_TOL {
         let vx = m01;
         let vy = lambda1 - m00;
@@ -687,25 +636,20 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
     } else {
         (0.0, 1.0)
     };
-    let (v2x, v2y) = (-v1y, v1x); // Orthogonal eigenvector
+    let (v2x, v2y) = (-v1y, v1x);
 
-    // Linear terms in eigenvector coordinates
     let d_prime = coeff_d * v1x + coeff_e * v1y;
     let e_prime = coeff_d * v2x + coeff_e * v2y;
 
-    // Complete the square
     let rhs = -(coeff_f - d_prime * d_prime / lambda1 - e_prime * e_prime / lambda2);
 
     if rhs * lambda1 < -GEO_TOL {
-        // No real solution
         return Some(vec![]);
     }
     if rhs.abs() < GEO_TOL {
-        // Point (degenerate ellipse)
         return Some(vec![]);
     }
 
-    // Semi-axes
     let a_sq = rhs / lambda1;
     let b_sq = rhs / lambda2;
     if a_sq < -GEO_TOL || b_sq < -GEO_TOL {
@@ -714,24 +658,19 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
     let semi_a = a_sq.max(0.0).sqrt();
     let semi_b = b_sq.max(0.0).sqrt();
 
-    // Ellipse center in eigenvector coordinates
     let s0_prime = -d_prime / lambda1;
     let t0_prime = -e_prime / lambda2;
 
-    // Back to original (s,t) coordinates
     let s0 = v1x * s0_prime + v2x * t0_prime;
     let t0 = v1y * s0_prime + v2y * t0_prime;
 
-    // 3D ellipse center
     let center = vec3::add(vec3::add(p0, vec3::scale(pl_u, s0)), vec3::scale(pl_w, t0));
 
-    // 3D ellipse axis directions
     let dir1 = vec3::add(vec3::scale(pl_u, v1x), vec3::scale(pl_w, v1y));
     let dir2 = vec3::add(vec3::scale(pl_u, v2x), vec3::scale(pl_w, v2y));
     let axis_u = vec3::scale(dir1, semi_a);
     let axis_v = vec3::scale(dir2, semi_b);
 
-    // Verify ellipse is within cone height range
     let check_points = [
         center,
         vec3::add(center, axis_u),
@@ -759,7 +698,6 @@ pub fn plane_cone_intersect(plane: &Surface, cone: &Surface) -> Option<Vec<Surfa
     }])
 }
 
-/// Polyline sampling fallback for Plane x Cone when analytic solution fails.
 fn plane_cone_sample_intersection(
     origin_p: &[f64; 3],
     normal_p: &[f64; 3],
@@ -816,10 +754,9 @@ fn plane_cone_sample_intersection(
         return vec![];
     }
 
-    // Split point cloud into curves by angular gap
     let mut curves: Vec<Vec<[f64; 3]>> = Vec::new();
     let mut current = vec![points[0]];
-    let gap_threshold = axis_len * 0.5; // Split at large gaps
+    let gap_threshold = axis_len * 0.5;
 
     for i in 1..points.len() {
         let dist = vec3::length(vec3::sub(points[i], points[i - 1]));
@@ -839,7 +776,6 @@ fn plane_cone_sample_intersection(
     curves
 }
 
-/// Plane x Cone face intersection
 fn plane_cone_face_intersection(
     plane_face: &Face,
     plane_shell: &Shell,
@@ -860,7 +796,6 @@ fn plane_cone_face_intersection(
         _ => return vec![],
     };
 
-    // Try analytic intersection
     let has_boundary = !plane_face.loop_edges.is_empty();
     if let Some(intersections) = plane_cone_intersect(&plane_face.surface, &cone_face.surface) {
         let mut result = Vec::new();
@@ -930,7 +865,6 @@ fn plane_cone_face_intersection(
                             }
                         }
                     } else {
-                        // No boundary: clip to cone range
                         let len = vec3::length(*c_axis);
                         let l1 = vec3::add(line1_point, vec3::scale(line1_dir, len));
                         result.push(Curve3D::Line {
@@ -956,7 +890,6 @@ fn plane_cone_face_intersection(
         }
     }
 
-    // Fallback: polyline sampling for parabola/hyperbola
     let polylines =
         plane_cone_sample_intersection(&p_origin, &p_normal, c_origin, c_axis, c_half_angle);
 
@@ -983,8 +916,7 @@ fn plane_cone_face_intersection(
     polylines_to_curves(polylines, events)
 }
 
-/// Clip an infinite line to a convex face boundary, returning parameter interval (t_min, t_max).
-/// line(t) = line_point + t * line_dir
+/// 直線を凸な平面領域の内側に切り詰めたパラメータ区間を返します。
 pub fn clip_line_to_face(
     line_point: &[f64; 3],
     line_dir: &[f64; 3],
@@ -1011,31 +943,25 @@ pub fn clip_line_to_face(
         let pb = &shell.vertices[vb];
 
         let edge_dir = vec3::sub(*pb, *pa);
-        // Inward normal = edge_dir x face_normal (CCW loop)
         let inward = vec3::cross(edge_dir, *face_normal);
 
         let denom = vec3::dot(inward, *line_dir);
         let numer = vec3::dot(inward, vec3::sub(*line_point, *pa));
 
         if denom.abs() < CLIP_TOL {
-            // Line parallel to half-plane boundary
             if numer > CLIP_TOL {
-                return None; // Outside
+                return None;
             }
             continue;
         }
 
         let t = -numer / denom;
         if denom < 0.0 {
-            // Entering
             if t > t_min {
                 t_min = t;
             }
-        } else {
-            // Exiting
-            if t < t_max {
-                t_max = t;
-            }
+        } else if t < t_max {
+            t_max = t;
         }
     }
 
@@ -1043,7 +969,6 @@ pub fn clip_line_to_face(
         return None;
     }
 
-    // Filter empty interval
     if t_min > t_max {
         return None;
     }
@@ -1051,10 +976,8 @@ pub fn clip_line_to_face(
     Some((t_min, t_max))
 }
 
-/// Fit SSI polylines to NurbsCurve3D; fall back to Line segments on failure.
 const NURBS_FIT_TOL: f64 = 1e-4;
 
-/// Convert fit_nurbs_curve result to Curve3D.
 fn fit_nurbs_curve_to_curve3d(
     points: &[[f64; 3]],
     tolerance: f64,
@@ -1126,6 +1049,7 @@ fn arc_from_three_points(points: &[[f64; 3]]) -> Option<Curve3D> {
     (error < radius * 1e-2 + 1e-4).then_some(curve)
 }
 
+/// 折れ線を曲線へ変換し、近似に失敗した部分は線分として返します。
 pub(crate) fn polylines_to_curves(
     polylines: Vec<Vec<[f64; 3]>>,
     events: &mut Vec<BooleanEvent>,
@@ -1158,7 +1082,6 @@ pub(crate) fn polylines_to_curves(
                 }
             }
         }
-        // Fallback: Line segments
         for w in polyline.windows(2) {
             result.push(Curve3D::Line {
                 start: w[0],
@@ -1169,9 +1092,7 @@ pub(crate) fn polylines_to_curves(
     result
 }
 
-/// Compute intersection curves between two faces.
-///
-/// SSI polylines are fit to NurbsCurve3D when possible, with Line segment fallback.
+/// 二つの面の交差曲線を返します。未対応または交差しない組合せは空のベクタを返します。
 pub fn face_face_intersection(
     face_a: &Face,
     shell_a: &Shell,
@@ -1241,7 +1162,6 @@ pub fn face_face_intersection(
         (Surface::Cone { .. }, Surface::Plane { .. }) => {
             plane_cone_face_intersection(face_b, shell_b, face_a, shell_a, events)
         }
-        // B2: Sphere × Cone
         (Surface::Sphere { .. }, Surface::Cone { .. }) => {
             super::sweep_intersect::sphere_cone_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1252,7 +1172,6 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // B3: Sphere × Ellipsoid
         (Surface::Sphere { .. }, Surface::Ellipsoid { .. }) => {
             super::sweep_intersect::sphere_ellipsoid_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1263,7 +1182,6 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // B5: Ellipsoid × Cone
         (Surface::Ellipsoid { .. }, Surface::Cone { .. }) => {
             super::sweep_intersect::ellipsoid_cone_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1274,13 +1192,11 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // B6: Ellipsoid × Ellipsoid
         (Surface::Ellipsoid { .. }, Surface::Ellipsoid { .. }) => {
             super::sweep_intersect::ellipsoid_ellipsoid_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
             )
         }
-        // B8: Cylinder × Cone
         (Surface::Cylinder { .. }, Surface::Cone { .. }) => {
             super::sweep_intersect::cylinder_cone_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1291,13 +1207,11 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // B9: Cone × Cone
         (Surface::Cone { .. }, Surface::Cone { .. }) => {
             super::sweep_intersect::cone_cone_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
             )
         }
-        // Sphere × Torus
         (Surface::Sphere { .. }, Surface::Torus { .. }) => {
             super::sweep_intersect::sphere_torus_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1308,7 +1222,6 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // Cylinder × Torus
         (Surface::Cylinder { .. }, Surface::Torus { .. }) => {
             super::sweep_intersect::cylinder_torus_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1319,7 +1232,6 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // Cone × Torus
         (Surface::Cone { .. }, Surface::Torus { .. }) => {
             super::sweep_intersect::cone_torus_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1330,7 +1242,6 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // Ellipsoid × Torus
         (Surface::Ellipsoid { .. }, Surface::Torus { .. }) => {
             super::sweep_intersect::ellipsoid_torus_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
@@ -1341,20 +1252,17 @@ pub fn face_face_intersection(
                 face_b, shell_b, face_a, shell_a, events,
             )
         }
-        // Torus × Torus
         (Surface::Torus { .. }, Surface::Torus { .. }) => {
             super::sweep_intersect::torus_torus_face_intersection(
                 face_a, shell_a, face_b, shell_b, events,
             )
         }
-        // NurbsSurface × Plane
         (Surface::NurbsSurface { data }, Surface::Plane { origin, normal })
         | (Surface::Plane { origin, normal }, Surface::NurbsSurface { data }) => {
             let polylines =
                 super::nurbs_intersect::nurbs_plane_intersection(data.as_ref(), origin, normal);
             polylines_to_curves(polylines, events)
         }
-        // NurbsSurface × Quadric (Sphere/Ellipsoid/Cylinder/Cone)
         (
             Surface::NurbsSurface { data },
             quadric @ (Surface::Sphere { .. }
@@ -1373,7 +1281,6 @@ pub fn face_face_intersection(
                 super::nurbs_intersect::nurbs_quadric_intersection(data.as_ref(), quadric);
             polylines_to_curves(polylines, events)
         }
-        // NurbsSurface × Torus
         (
             Surface::NurbsSurface { data },
             Surface::Torus {
@@ -1401,13 +1308,11 @@ pub fn face_face_intersection(
             );
             polylines_to_curves(polylines, events)
         }
-        // NurbsSurface × NurbsSurface
         (Surface::NurbsSurface { data: data_a }, Surface::NurbsSurface { data: data_b }) => {
             let polylines =
                 super::nurbs_intersect::nurbs_nurbs_intersection(data_a.as_ref(), data_b.as_ref());
             polylines_to_curves(polylines, events)
         }
-        // SurfaceOfRevolution × Plane
         (Surface::SurfaceOfRevolution { .. }, Surface::Plane { origin, normal })
         | (Surface::Plane { origin, normal }, Surface::SurfaceOfRevolution { .. }) => {
             let rev_surf = if matches!(face_a.surface, Surface::SurfaceOfRevolution { .. }) {
@@ -1429,7 +1334,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfRevolution × Quadric (Sphere/Ellipsoid/Cylinder/Cone)
         (
             Surface::SurfaceOfRevolution { .. },
             quadric @ (Surface::Sphere { .. }
@@ -1463,7 +1367,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfRevolution × Torus
         (
             Surface::SurfaceOfRevolution { .. },
             Surface::Torus {
@@ -1506,7 +1409,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfRevolution × NurbsSurface
         (Surface::SurfaceOfRevolution { .. }, Surface::NurbsSurface { data })
         | (Surface::NurbsSurface { data }, Surface::SurfaceOfRevolution { .. }) => {
             let rev_surf = if matches!(face_a.surface, Surface::SurfaceOfRevolution { .. }) {
@@ -1528,7 +1430,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfRevolution × SurfaceOfSweep
         (Surface::SurfaceOfRevolution { .. }, Surface::SurfaceOfSweep { .. })
         | (Surface::SurfaceOfSweep { .. }, Surface::SurfaceOfRevolution { .. }) => {
             match (
@@ -1548,7 +1449,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfRevolution × SurfaceOfRevolution
         (Surface::SurfaceOfRevolution { .. }, Surface::SurfaceOfRevolution { .. }) => {
             match (
                 face_a.surface.to_nurbs_surface(),
@@ -1566,7 +1466,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfSweep × Plane
         (Surface::SurfaceOfSweep { .. }, Surface::Plane { origin, normal })
         | (Surface::Plane { origin, normal }, Surface::SurfaceOfSweep { .. }) => {
             let sweep_surf = if matches!(face_a.surface, Surface::SurfaceOfSweep { .. }) {
@@ -1588,7 +1487,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfSweep × Quadric (Sphere/Ellipsoid/Cylinder/Cone)
         (
             Surface::SurfaceOfSweep { .. },
             quadric @ (Surface::Sphere { .. }
@@ -1622,7 +1520,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfSweep × Torus
         (
             Surface::SurfaceOfSweep { .. },
             Surface::Torus {
@@ -1665,7 +1562,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfSweep × NurbsSurface
         (Surface::SurfaceOfSweep { .. }, Surface::NurbsSurface { data })
         | (Surface::NurbsSurface { data }, Surface::SurfaceOfSweep { .. }) => {
             let sweep_surf = if matches!(face_a.surface, Surface::SurfaceOfSweep { .. }) {
@@ -1687,7 +1583,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // SurfaceOfSweep × SurfaceOfSweep
         (Surface::SurfaceOfSweep { .. }, Surface::SurfaceOfSweep { .. }) => {
             match (
                 face_a.surface.to_nurbs_surface(),
@@ -1705,7 +1600,6 @@ pub fn face_face_intersection(
                 }
             }
         }
-        // All surface pairs covered -- unreachable
         #[allow(unreachable_patterns)]
         _ => {
             events.push(BooleanEvent::Warning(
@@ -1716,7 +1610,6 @@ pub fn face_face_intersection(
     }
 }
 
-/// Plane-Plane intersection
 fn plane_plane_face_intersection(
     face_a: &Face,
     shell_a: &Shell,
@@ -1747,7 +1640,6 @@ fn plane_plane_face_intersection(
     }
 }
 
-/// Plane-Cylinder intersection
 fn plane_cylinder_face_intersection(
     plane_face: &Face,
     plane_shell: &Shell,
@@ -1765,7 +1657,6 @@ fn plane_cylinder_face_intersection(
             axis,
             radius,
         } => {
-            // Clip circle to plane face boundary
             let u = perpendicular_unit(&axis);
             let start = vec3::add(center, vec3::scale(u, radius));
             let arc = Curve3D::Arc {
@@ -1822,10 +1713,6 @@ fn plane_cylinder_face_intersection(
     }
 }
 
-/// Plane-Torus face intersection.
-///
-/// Substitutes plane implicit into torus parametrization,
-/// uses Weierstrass substitution for phi, solved by `sweep_torus_intersection`.
 fn plane_torus_face_intersection(
     plane_face: &Face,
     plane_shell: &Shell,
@@ -1854,25 +1741,19 @@ fn plane_torus_face_intersection(
         _ => return vec![],
     };
 
-    // Torus orthonormal basis
     let (bu, bv) = orthonormal_basis(t_axis);
 
-    // Plane implicit: n * x = d
     let n = p_normal;
     let d_val = vec3::dot(n, p_origin);
 
-    // Precompute: n*a
     let n_dot_a = vec3::dot(n, t_axis);
-    // n*tc - d
     let n_dot_tc_minus_d = vec3::dot(n, tc) - d_val;
 
-    // n*bu, n*bv
     let n_dot_bu = vec3::dot(n, bu);
     let n_dot_bv = vec3::dot(n, bv);
 
     let char_len = little_r;
 
-    // Torus parametrization
     let eval_fn = |theta: f64, phi: f64| -> [f64; 3] {
         let cos_t = theta.cos();
         let sin_t = theta.sin();
@@ -1884,16 +1765,12 @@ fn plane_torus_face_intersection(
         )
     };
 
-    // Degenerate case: plane normal perpendicular to torus axis (n*a ~ 0).
-    // When n*d(theta) = 0, the entire minor circle lies on the plane.
     if n_dot_a.abs() < 1e-10 {
         let amplitude = (n_dot_bu * n_dot_bu + n_dot_bv * n_dot_bv).sqrt();
         if amplitude < 1e-14 {
-            // n orthogonal to both bu, bv -> contradiction -> no intersection
             return vec![];
         }
 
-        // Find theta where n*d(theta) = 0
         let theta0 = (-n_dot_bu).atan2(n_dot_bv);
         let mut coplanar_circles = Vec::new();
 
@@ -1903,7 +1780,6 @@ fn plane_torus_face_intersection(
             }
 
             if n_dot_tc_minus_d.abs() < 1e-10 {
-                // Entire minor circle on plane -> sample it
                 let n_pts = 64;
                 let mut circle = Vec::with_capacity(n_pts + 1);
                 for j in 0..=n_pts {
@@ -1912,11 +1788,9 @@ fn plane_torus_face_intersection(
                 }
                 coplanar_circles.push(circle);
             }
-            // Nonzero case handled by sweep
         }
 
         if !coplanar_circles.is_empty() {
-            // Also run sweep to combine results
             let phi_eq_fn_inner = |theta_: f64| -> Vec<f64> {
                 let cos_t = theta_.cos();
                 let sin_t = theta_.sin();
@@ -1959,8 +1833,6 @@ fn plane_torus_face_intersection(
         }
     }
 
-    // Closure returning phi equation coefficients
-
     let phi_eq_fn = |theta: f64| -> Vec<f64> {
         let cos_t = theta.cos();
         let sin_t = theta.sin();
@@ -1970,7 +1842,6 @@ fn plane_torus_face_intersection(
         let b = little_r * n_dot_a;
         let c = big_r * n_dot_d + n_dot_tc_minus_d;
 
-        // Near-zero polynomial (entire minor circle on plane) -> empty
         let norm = a.abs() + b.abs() + c.abs();
         if norm < 1e-14 {
             return vec![];
@@ -1991,7 +1862,6 @@ fn plane_torus_face_intersection(
         polylines.len()
     )));
 
-    // Clip polylines to plane face if it has bounds
     if !plane_face.loop_edges.is_empty() {
         let mut result = Vec::new();
         for polyline in &polylines {
@@ -2003,11 +1873,9 @@ fn plane_torus_face_intersection(
         }
     }
 
-    // No bounds (empty loop_edges): try NURBS fit
     polylines_to_curves(polylines, events)
 }
 
-/// Plane-Sphere intersection
 fn plane_sphere_face_intersection(
     plane_face: &Face,
     plane_shell: &Shell,
@@ -2116,7 +1984,6 @@ fn sphere_plane_face_intersection(
     }
 }
 
-/// Sphere-Sphere face intersection
 fn sphere_sphere_face_intersection(
     face_a: &Face,
     shell_a: &Shell,
@@ -2153,7 +2020,7 @@ fn sphere_sphere_face_intersection(
     }
 }
 
-/// Clip a polyline to both face boundaries, returning Line segments inside both faces.
+/// 両面の内側にある折れ線部分を線分として返します。
 pub(crate) fn clip_polyline_to_both_faces(
     polyline: &[[f64; 3]],
     face_a: &Face,
@@ -2219,7 +2086,7 @@ fn clip_curve_polyline_to_both_faces(
     result
 }
 
-/// Classify parallelism and distance between two cylinder axes.
+/// 二円柱軸の平行性と最短距離を返します。
 pub(crate) fn classify_axes(
     origin_a: &[f64; 3],
     axis_a: &[f64; 3],
@@ -2229,13 +2096,11 @@ pub(crate) fn classify_axes(
     let is_parallel = vec3::dot(*axis_a, *axis_b).abs() > 1.0 - 1e-10;
 
     if is_parallel {
-        // Parallel: project inter-origin vector onto axis-perpendicular component
         let diff = vec3::sub(*origin_b, *origin_a);
         let along = vec3::dot(diff, *axis_a);
         let perp = vec3::sub(diff, vec3::scale(*axis_a, along));
         (true, vec3::length(perp))
     } else {
-        // Non-parallel: shortest distance between two lines
         let n = vec3::normalized(vec3::cross(*axis_a, *axis_b));
         let diff = vec3::sub(*origin_b, *origin_a);
         let dist = vec3::dot(diff, n).abs();
@@ -2243,12 +2108,10 @@ pub(crate) fn classify_axes(
     }
 }
 
-/// Return a unit vector perpendicular to the given axis.
 fn perpendicular_unit(axis: &[f64; 3]) -> [f64; 3] {
     orthonormal_basis(*axis).0
 }
 
-/// Clip a polyline to a face boundary, returning Line segments inside the face.
 fn clip_polyline_to_face(polyline: &[[f64; 3]], face: &Face, shell: &Shell) -> Vec<Curve3D> {
     use crate::boolean3d::classify3d::point_in_face_polygon;
 
@@ -2270,7 +2133,6 @@ fn clip_polyline_to_face(polyline: &[[f64; 3]], face: &Face, shell: &Shell) -> V
         }
     }
 
-    // Remaining tail
     if inside_run.len() >= 2 {
         let start = inside_run[0];
         let end = inside_run[inside_run.len() - 1];
@@ -2680,7 +2542,7 @@ fn closest_periodic_parameter(
     }
 }
 
-/// Extract vertex coordinates from face edge loop.
+/// 面の辺ループから頂点列を返します。
 pub fn face_polygon(face: &Face, shell: &Shell) -> Vec<[f64; 3]> {
     face.loop_edges
         .iter()
@@ -2692,7 +2554,7 @@ pub fn face_polygon(face: &Face, shell: &Shell) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Sample a face boundary as a UV polyline on the underlying surface.
+/// 面の辺ループを曲面パラメータ空間の折れ線へ変換します。
 #[allow(dead_code)]
 pub(crate) fn face_boundary_uv_polyline(
     face: &Face,
@@ -2724,7 +2586,7 @@ pub(crate) fn face_boundary_uv_polyline(
     Some(uv)
 }
 
-/// Split a face by cut curves into SubFaces.
+/// 交差曲線で面を部分面へ分割します。分割できない曲線では元の面を返します。
 pub fn split_face(
     face: &Face,
     shell: &Shell,
@@ -2771,9 +2633,6 @@ pub fn split_face(
         .collect()
 }
 
-/// Split polygon by a curve. Non-line curves use polyline endpoint approximation.
-///
-/// For NurbsSurface, projects onto an approximate plane using centroid normal.
 fn split_polygon_by_curve(
     polygon: &[[f64; 3]],
     cut: &Curve3D,
@@ -2791,7 +2650,6 @@ fn split_polygon_by_curve(
         return split;
     }
 
-    // For NurbsSurface, build approximate plane from centroid normal
     let effective_surface: Option<Surface> = match surface {
         Surface::NurbsSurface { data } => {
             let n = polygon.len() as f64;
@@ -2802,7 +2660,6 @@ fn split_polygon_by_curve(
                 let cy = polygon.iter().map(|p| p[1]).sum::<f64>() / n;
                 let cz = polygon.iter().map(|p| p[2]).sum::<f64>() / n;
                 let centroid = [cx, cy, cz];
-                // Project centroid to surface to get normal
                 let (u, v) = project_to_nurbs(data, &centroid);
                 let normal = data.normal(u, v);
                 let origin = data.evaluate(u, v);
@@ -2816,7 +2673,6 @@ fn split_polygon_by_curve(
     match cut {
         Curve3D::Line { .. } => polygons_from_pair(split_polygon_by_line(polygon, cut, surf)),
         _ => {
-            // Convert curve to polyline and split by line through endpoints
             let polyline = cut.to_polyline(1e-3);
             if polyline.len() < 2 {
                 return vec![polygon.to_vec()];
@@ -2852,7 +2708,6 @@ fn polygons_from_pair(split: (Vec<[f64; 3]>, Vec<[f64; 3]>)) -> Vec<Vec<[f64; 3]
     polygons
 }
 
-/// Split polygon by a cut line using Sutherland-Hodgman with orient2d exact predicates.
 fn split_polygon_by_line(
     polygon: &[[f64; 3]],
     cut: &Curve3D,
@@ -2867,13 +2722,11 @@ fn split_polygon_by_line(
         _ => return (polygon.to_vec(), Vec::new()),
     };
 
-    // Check for degenerate cut direction
     let cut_dir = vec3::sub(*cut_end, *cut_start);
     if vec3::length(cut_dir) < 1e-15 {
         return (polygon.to_vec(), Vec::new());
     }
 
-    // Drop largest normal component for 2D projection
     let abs_n = [
         surface_normal[0].abs(),
         surface_normal[1].abs(),
@@ -2898,7 +2751,6 @@ fn split_polygon_by_line(
     let cs2d = project(cut_start);
     let ce2d = project(cut_end);
 
-    // Classify vertices via orient2d: positive=left, negative=right, 0=on-line
     let orients: Vec<f64> = polygon
         .iter()
         .map(|p| neco_cdt::orient2d(cs2d, ce2d, project(p)))
@@ -2915,18 +2767,14 @@ fn split_polygon_by_line(
         let pi = &polygon[i];
         let pj = &polygon[j];
 
-        // orient >= 0 -> left (on-line included in both)
         if oi >= 0.0 {
             left.push(*pi);
         }
-        // orient <= 0 → right
         if oi <= 0.0 {
             right.push(*pi);
         }
 
-        // Edge crosses cut line (strict sign reversal)
         if (oi > 0.0 && oj < 0.0) || (oi < 0.0 && oj > 0.0) {
-            // Linear interpolation for intersection point (inexact construction)
             let cut_normal = vec3::cross(cut_dir, *surface_normal);
             let cut_normal_len = vec3::length(cut_normal);
             let cut_normal = vec3::scale(cut_normal, 1.0 / cut_normal_len);
@@ -2939,7 +2787,6 @@ fn split_polygon_by_line(
         }
     }
 
-    // Remove degenerate polygons (< 3 vertices)
     if left.len() < 3 {
         left.clear();
     }
@@ -3553,19 +3400,15 @@ mod tests {
                 axis_u,
                 axis_v,
             }) => {
-                // Verify point lies on both plane and cylinder
                 let p = vec3::add(center, axis_u);
-                // On plane: normal * (p - origin) ~ 0
                 let n = vec3::normalized([0.0, 1.0, 1.0]);
                 assert!(vec3::dot(n, p).abs() < 1e-10, "ellipse point not on plane");
-                // On cylinder: distance from axis ~ radius
-                let q = [p[0], 0.0, p[2]]; // remove axis component
+                let q = [p[0], 0.0, p[2]];
                 assert!(
                     (vec3::length(q) - 1.0).abs() < 1e-10,
                     "ellipse point not on cylinder"
                 );
 
-                // Also verify axis_v direction
                 let p2 = vec3::add(center, axis_v);
                 assert!(
                     vec3::dot(n, p2).abs() < 1e-10,
@@ -3630,7 +3473,6 @@ mod tests {
 
     #[test]
     fn sphere_sphere_intersect_partial_overlap() {
-        // Partially overlapping spheres
         let s1 = Surface::Sphere {
             center: [0.0, 0.0, 0.0],
             radius: 1.0,
@@ -3645,13 +3487,10 @@ mod tests {
                 axis,
                 radius,
             }) => {
-                // h = (1 + 1 - 1) / 2 = 0.5
                 assert!((center[0] - 0.5).abs() < 1e-10, "circle center x = 0.5");
                 assert!(center[1].abs() < 1e-10);
                 assert!(center[2].abs() < 1e-10);
-                // Axis along (1,0,0)
                 assert!((axis[0] - 1.0).abs() < 1e-10, "axis direction is +X");
-                // r = sqrt(1 - 0.25) = sqrt(0.75)
                 let expected_r = (0.75_f64).sqrt();
                 assert!((radius - expected_r).abs() < 1e-10, "circle radius");
             }
@@ -3661,7 +3500,6 @@ mod tests {
 
     #[test]
     fn sphere_sphere_intersect_no_overlap() {
-        // Separated spheres
         let s1 = Surface::Sphere {
             center: [0.0, 0.0, 0.0],
             radius: 1.0,
@@ -3678,7 +3516,6 @@ mod tests {
 
     #[test]
     fn sphere_sphere_intersect_containment() {
-        // Contained spheres
         let s1 = Surface::Sphere {
             center: [0.0, 0.0, 0.0],
             radius: 2.0,
@@ -3695,7 +3532,6 @@ mod tests {
 
     #[test]
     fn sphere_sphere_intersect_coincident() {
-        // Identical spheres
         let s1 = Surface::Sphere {
             center: [1.0, 2.0, 3.0],
             radius: 1.0,
@@ -3712,7 +3548,6 @@ mod tests {
 
     #[test]
     fn sphere_sphere_intersect_tangent() {
-        // Externally tangent
         let s1 = Surface::Sphere {
             center: [0.0, 0.0, 0.0],
             radius: 1.0,
@@ -3727,11 +3562,8 @@ mod tests {
         );
     }
 
-    // ─── Plane x Cone tests ───
-
     #[test]
     fn plane_cone_perpendicular_gives_circle() {
-        // Perpendicular plane -> circle
         let plane = Surface::Plane {
             origin: [0.0, 1.0, 0.0],
             normal: [0.0, 1.0, 0.0],
@@ -3747,7 +3579,6 @@ mod tests {
         assert_eq!(intersections.len(), 1, "one intersection");
         match &intersections[0] {
             SurfaceIntersection::Circle { radius, .. } => {
-                // h=1, half_angle=π/4 → r = 1·tan(π/4) = 1
                 assert!(
                     (*radius - 1.0).abs() < 1e-8,
                     "radius = tan(pi/4) = 1: {radius}"
@@ -3759,7 +3590,6 @@ mod tests {
 
     #[test]
     fn plane_cone_through_apex_gives_two_lines() {
-        // Plane through apex -> 2 lines
         let plane = Surface::Plane {
             origin: [0.0, 0.0, 0.0],
             normal: [1.0, 0.0, 0.0],
@@ -3781,7 +3611,6 @@ mod tests {
 
     #[test]
     fn plane_cone_oblique_gives_ellipse() {
-        // Oblique plane -> ellipse
         let plane = Surface::Plane {
             origin: [0.0, 1.0, 0.0],
             normal: vec3::normalized([0.0, 1.0, 0.3]),
@@ -3789,13 +3618,12 @@ mod tests {
         let cone = Surface::Cone {
             origin: [0.0, 0.0, 0.0],
             axis: [0.0, 3.0, 0.0],
-            half_angle: 0.3, // ≈ 17°
+            half_angle: 0.3,
         };
         let result = plane_cone_intersect(&plane, &cone);
         assert!(result.is_some(), "intersection expected");
         let intersections = result.unwrap();
         assert!(!intersections.is_empty(), "intersection curves expected");
-        // Should return ellipse
         assert!(
             matches!(&intersections[0], SurfaceIntersection::Ellipse { .. }),
             "expected Ellipse: {:?}",
@@ -3805,7 +3633,6 @@ mod tests {
 
     #[test]
     fn plane_cone_no_intersection() {
-        // Plane outside cone range -> no intersection
         let plane = Surface::Plane {
             origin: [0.0, 5.0, 0.0],
             normal: [0.0, 1.0, 0.0],
@@ -3816,16 +3643,14 @@ mod tests {
             half_angle: 0.3,
         };
         let result = plane_cone_intersect(&plane, &cone);
-        // Plane outside cone height range -> None or empty
         match result {
-            None => {} // OK
+            None => {}
             Some(v) => assert!(v.is_empty(), "expected no intersection"),
         }
     }
 
     #[test]
     fn plane_cone_through_apex_axial() {
-        // Plane through apex, normal parallel to axis -> degenerate
         let plane = Surface::Plane {
             origin: [0.0, 0.0, 0.0],
             normal: [0.0, 0.0, 1.0],
@@ -3835,13 +3660,11 @@ mod tests {
             axis: [0.0, 0.0, 1.0],
             half_angle: std::f64::consts::FRAC_PI_4,
         };
-        // Should not panic
         let _ = plane_cone_intersect(&plane, &cone);
     }
 
     #[test]
     fn plane_cone_sample_hyperbola() {
-        // Steep plane -> hyperbola (sampling)
         let origin_p = [0.0, 0.5, 2.0];
         let normal_p = [0.0, 0.0, 1.0];
         let origin_c = [0.0, 0.0, 0.0];
@@ -3850,15 +3673,12 @@ mod tests {
 
         let polylines =
             plane_cone_sample_intersection(&origin_p, &normal_p, &origin_c, &axis_c, half_angle);
-        // Plane z=2 cutting cone (half-angle 0.3)
-        // Sampling should produce curves
         if !polylines.is_empty() {
             for polyline in &polylines {
                 assert!(
                     polyline.len() >= 2,
                     "sampling curve should have >= 2 points"
                 );
-                // All points should be on the plane
                 for p in polyline {
                     let d = (p[2] - 2.0).abs();
                     assert!(d < 0.1, "on plane: z={}, expected=2.0", p[2]);
@@ -3869,7 +3689,6 @@ mod tests {
 
     #[test]
     fn split_face_nurbs_surface_line_cut() {
-        // Bilinear NurbsSurface at y=0, split by line; verify centroid normal projection works
         let surf_data = NurbsSurface3D {
             degree_u: 1,
             degree_v: 1,
@@ -3885,7 +3704,6 @@ mod tests {
             data: Box::new(surf_data),
         };
 
-        // Square polygon [0,1]x[0,1] at y=0
         let polygon = vec![
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -3893,7 +3711,6 @@ mod tests {
             [0.0, 0.0, 1.0],
         ];
 
-        // Cut vertically at x=0.5
         let cut = Curve3D::Line {
             start: [0.5, 0.0, -0.1],
             end: [0.5, 0.0, 1.1],
@@ -3910,7 +3727,6 @@ mod tests {
             orientation_reversed: false,
         };
 
-        // Test split_polygon_by_curve directly
         let split = split_polygon_by_curve(&polygon, &cut, &surface);
         assert_eq!(
             split.len(),
@@ -3929,13 +3745,11 @@ mod tests {
             "right polygon should be non-empty: len={}",
             right.len()
         );
-        // Left side contains vertices with x < 0.5
         let max_x_left = left.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
         assert!(
             max_x_left <= 0.5 + 1e-9,
             "left max x should be <= 0.5: {max_x_left}"
         );
-        // Right side contains vertices with x > 0.5
         let min_x_right = right.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
         assert!(
             min_x_right >= 0.5 - 1e-9,

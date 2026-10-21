@@ -1,9 +1,8 @@
-// HKDF-SHA256 per RFC 5869
+//! RFC 5869 に基づく HKDF-SHA256。
 
 use crate::hmac::Hmac;
 
 const HASH_LEN: usize = 32;
-// RFC 5869 §2.3: L ≤ 255 * HashLen
 const MAX_OUTPUT: usize = 255 * HASH_LEN;
 
 pub struct Prk([u8; HASH_LEN]);
@@ -20,9 +19,8 @@ impl core::fmt::Display for HkdfError {
 pub struct Hkdf;
 
 impl Hkdf {
-    /// HKDF-Extract: PRK = HMAC-Hash(salt, IKM)
+    /// salt と入力鍵素材から 32 バイトの擬似乱数鍵を生成する。空の salt は 32 バイトの零値として扱う。
     pub fn extract(salt: &[u8], ikm: &[u8]) -> Prk {
-        // If salt is not provided, use a string of HashLen zeros
         let salt_used: &[u8] = if salt.is_empty() {
             &[0u8; HASH_LEN]
         } else {
@@ -33,17 +31,17 @@ impl Hkdf {
 }
 
 impl Prk {
-    /// Construct a `Prk` directly from an existing 32-byte key.
+    /// 32 バイトの擬似乱数鍵から `Prk` を作る。
     pub fn from_bytes(bytes: &[u8; HASH_LEN]) -> Self {
         Prk(*bytes)
     }
 
-    /// Return the raw PRK bytes.
+    /// 擬似乱数鍵の 32 バイトを返す。
     pub fn as_bytes(&self) -> &[u8; HASH_LEN] {
         &self.0
     }
 
-    /// HKDF-Expand: OKM = T(1) || T(2) || ... || T(N)
+    /// `info` から指定長の出力鍵素材を生成する。8160 バイトを超える `len` は失敗する。
     pub fn expand(&self, info: &[u8], len: usize) -> Result<Vec<u8>, HkdfError> {
         if len > MAX_OUTPUT {
             return Err(HkdfError);
@@ -85,8 +83,6 @@ mod tests {
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
-
-    // RFC 5869 Appendix A
 
     #[test]
     fn rfc5869_tc1() {
@@ -130,7 +126,6 @@ mod tests {
 
     #[test]
     fn rfc5869_tc3() {
-        // No salt, no info
         let ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
         let salt = b"";
         let info = b"";

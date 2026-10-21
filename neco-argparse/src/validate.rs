@@ -6,17 +6,15 @@ use crate::args::{ArgDef, ArgType};
 use crate::error::ArgParseError;
 use crate::parsed::{value_to_f64, ParsedArgs};
 
-/// ArgDef に基づいて params JsonValue をパース・バリデーションする。
+/// 定義に従って引数オブジェクトを検証します。
 ///
-/// - `params` は `JsonValue::Object` であることを想定する（Object 以外はキー無しとして扱う）
-/// - `_positional` キーは位置引数リストとして特別処理する
+/// `_positional` 配列の文字列要素を位置引数として取り出します。必須項目の欠落と列挙値の違反は失敗します。整数または浮動小数点数へ変換できた値だけを範囲検査し、変換できない値はそのまま保持します。既定値が定義された任意項目には、その値を設定します。
 pub fn parse_and_validate(
     params: &JsonValue,
     defs: &[ArgDef],
 ) -> Result<ParsedArgs, ArgParseError> {
     let mut inner: HashMap<String, JsonValue> = HashMap::new();
 
-    // _positional を抽出
     let positional: Vec<String> = params
         .get("_positional")
         .and_then(|v| v.as_array())
@@ -27,7 +25,6 @@ pub fn parse_and_validate(
         })
         .unwrap_or_default();
 
-    // params が Object の場合、全キーを inner にコピー（_positional 除く）
     if let Some(fields) = params.as_object() {
         for (k, v) in fields {
             if k != "_positional" {
@@ -36,7 +33,6 @@ pub fn parse_and_validate(
         }
     }
 
-    // 各 ArgDef に基づくバリデーション
     for def in defs {
         let has_value = inner.contains_key(&def.name);
 
@@ -53,7 +49,6 @@ pub fn parse_and_validate(
 
         let value = &inner[&def.name];
 
-        // Enum values チェック
         if matches!(def.arg_type, ArgType::Enum) {
             if let Some(ref allowed) = def.values {
                 if let Some(s) = value.as_str() {
@@ -72,7 +67,6 @@ pub fn parse_and_validate(
             }
         }
 
-        // min/max 範囲チェック（数値型のみ）
         if matches!(def.arg_type, ArgType::Int | ArgType::Float) {
             if let Ok(n) = value_to_f64(value, &def.name) {
                 if let Some(min) = def.min {
@@ -152,8 +146,6 @@ mod tests {
                 .collect(),
         )
     }
-
-    // --- 12 件以上のテスト ---
 
     #[test]
     fn test_required_param_present() {
@@ -257,7 +249,6 @@ mod tests {
         let result = parse_and_validate(&params, &make_defs()).unwrap();
         let v = result.to_json_value();
         assert_eq!(v.get("width"), Some(&JsonValue::Number(50.0)));
-        // _positional は配列として格納されている
         let pos = v.get("_positional").unwrap().as_array().unwrap();
         assert_eq!(pos.len(), 2);
         assert_eq!(pos[0].as_str(), Some("a"));
@@ -269,7 +260,7 @@ mod tests {
         let params = obj(vec![("width", JsonValue::Number(50.0))]);
         let result = parse_and_validate(&params, &make_defs()).unwrap();
         assert!(result.get_opt_str("mode").is_none());
-        assert_eq!(result.get_opt_u32("height"), Some(100)); // default applied
+        assert_eq!(result.get_opt_u32("height"), Some(100));
     }
 
     #[test]

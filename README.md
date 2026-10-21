@@ -46,7 +46,7 @@ External dependencies list always-on dependencies first, with optional ones grou
 | Crate | Summary | Internal dependencies | Main external dependencies |
 |---|---|---|---|
 | [`neco-kmeans`](./neco-kmeans) | k-means clustering | none | (`rayon`) |
-| [`neco-spectral`](./neco-spectral) | spectral clustering | `neco-sparse`, `neco-eigensolve`, `neco-kmeans` | none |
+| [`neco-spectral`](./neco-spectral) | spectral clustering | `neco-kmeans` | neco-algebra packages |
 
 ### Search & Ranking
 

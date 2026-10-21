@@ -1,7 +1,3 @@
-/// Common framework for Quadric x Quadric intersection via parameter sweep.
-///
-/// Parametrize one surface, substitute into the other's implicit function,
-/// and solve by sweeping theta.
 use std::f64::consts::TAU;
 
 use crate::boolean3d::intersect3d::{classify_axes, clip_polyline_to_both_faces};
@@ -11,36 +7,24 @@ use crate::vec3;
 use neco_nurbs::solve_polynomial;
 use neco_nurbs::solve_quadratic;
 
-/// Discriminant threshold
 const DISC_EPS: f64 = 1e-12;
 
-/// Closed-loop detection distance threshold
 const CLOSE_LOOP_TOL: f64 = 1e-4;
 
-/// Adaptive refinement angle threshold (radians): 5 deg
 const ANGLE_THRESHOLD: f64 = 5.0 * std::f64::consts::PI / 180.0;
 
-/// Maximum adaptive refinement depth
 const MAX_REFINE_DEPTH: usize = 10;
 
-/// Initial subdivision count
 const N_THETA_INITIAL: usize = 360;
 
-/// Newton refinement max iterations
 const NEWTON_MAX_ITER: usize = 8;
 
-/// Newton refinement convergence threshold
 const NEWTON_TOL: f64 = 1e-14;
 
 type SweepPoint = (f64, [f64; 3]);
 type ThetaGroup = (f64, Vec<SweepPoint>);
 
-// ─── Core 1: sweep_quadric_intersection ──────────────
-
-/// Construct intersection curves via parameter sweep.
-///
-/// Parametrize one surface as (theta, h), substitute into the other's implicit
-/// to get alpha*h^2 + 2*beta*h + gamma = 0, sweep theta and solve for h.
+/// 一方の曲面を `(theta, h)` で表し、他方の陰関数から得る `alpha*h^2 + 2*beta*h + gamma = 0` を解いて交線を構成します。
 pub fn sweep_quadric_intersection<F, E, H>(
     coeff_fn: F,
     eval_fn: E,
@@ -53,7 +37,6 @@ where
     E: Fn(f64, f64) -> [f64; 3],
     H: Fn(f64) -> (f64, f64),
 {
-    // 1. Initial sampling
     let n = N_THETA_INITIAL;
     let (t0, t1) = theta_range;
     let dt = (t1 - t0) / n as f64;
@@ -65,13 +48,10 @@ where
         samples.push((theta, hs));
     }
 
-    // 2. Refine discriminant zeros
     refine_discriminant_zeros(&coeff_fn, &h_bounds, &mut samples);
 
-    // 3. Adaptive refinement
     adaptive_refine_quadric(&coeff_fn, &eval_fn, &h_bounds, &mut samples);
 
-    // 4. Branch tracing and point collection
     let mut raw_points: Vec<(f64, f64, [f64; 3])> = Vec::new();
     for (theta, hs) in &samples {
         for &h in hs {
@@ -83,7 +63,6 @@ where
     classify_branches(&raw_points, theta_range, char_len)
 }
 
-/// Solve alpha*h^2 + 2*beta*h + gamma = 0 at each theta
 fn solve_h_at_theta<F, H>(coeff_fn: &F, h_bounds: &H, theta: f64) -> Vec<f64>
 where
     F: Fn(f64) -> (f64, f64, f64),
@@ -92,10 +71,8 @@ where
     let (alpha, beta, gamma) = coeff_fn(theta);
     let (h_min, h_max) = h_bounds(theta);
 
-    // αh² + 2βh + γ = 0
     let roots = solve_quadratic(alpha, 2.0 * beta, gamma);
 
-    // Apply Newton refinement near tangent points, return only in-range solutions
     roots
         .into_iter()
         .filter_map(|h| {
@@ -109,8 +86,6 @@ where
         .collect()
 }
 
-/// Newton refinement for small discriminant.
-/// f(h) = αh² + 2βh + γ, f'(h) = 2αh + 2β
 fn newton_refine_h(alpha: f64, beta: f64, gamma: f64, h0: f64) -> f64 {
     if alpha.abs() < DISC_EPS {
         return h0;
@@ -131,7 +106,6 @@ fn newton_refine_h(alpha: f64, beta: f64, gamma: f64, h0: f64) -> f64 {
     h
 }
 
-/// Refine discriminant zeros: detect sign changes between adjacent samples and bisect.
 fn refine_discriminant_zeros<F, H>(coeff_fn: &F, h_bounds: &H, samples: &mut Vec<(f64, Vec<f64>)>)
 where
     F: Fn(f64) -> (f64, f64, f64),
@@ -145,7 +119,6 @@ where
         let disc_lo = discriminant_at(coeff_fn, theta_lo);
         let disc_hi = discriminant_at(coeff_fn, theta_hi);
 
-        // Refine if sign change detected
         if disc_lo * disc_hi < 0.0 {
             let theta_zero = bisect_discriminant_zero(coeff_fn, theta_lo, theta_hi);
             let hs = solve_h_at_theta(coeff_fn, h_bounds, theta_zero);
@@ -153,13 +126,11 @@ where
         }
     }
 
-    // Insert from back to preserve indices
     for (idx, theta, hs) in insertions.into_iter().rev() {
         samples.insert(idx, (theta, hs));
     }
 }
 
-/// Discriminant: beta^2 - alpha*gamma
 fn discriminant_at<F>(coeff_fn: &F, theta: f64) -> f64
 where
     F: Fn(f64) -> (f64, f64, f64),
@@ -168,7 +139,6 @@ where
     beta * beta - alpha * gamma
 }
 
-/// Bisection refinement of discriminant zero
 fn bisect_discriminant_zero<F>(coeff_fn: &F, theta_lo: f64, theta_hi: f64) -> f64
 where
     F: Fn(f64) -> (f64, f64, f64),
@@ -192,7 +162,6 @@ where
     0.5 * (lo + hi)
 }
 
-/// Adaptive refinement: bisect intervals where direction change exceeds threshold.
 fn adaptive_refine_quadric<F, E, H>(
     coeff_fn: &F,
     eval_fn: &E,
@@ -226,7 +195,6 @@ fn adaptive_refine_quadric<F, E, H>(
             break;
         }
 
-        // Dedup indices, insert from back
         insertions.dedup_by_key(|item| item.0);
         for (idx, theta, hs) in insertions.into_iter().rev() {
             let already_exists = samples.iter().any(|(t, _)| (t - theta).abs() < 1e-15);
@@ -237,7 +205,6 @@ fn adaptive_refine_quadric<F, E, H>(
     }
 }
 
-/// Check if direction change between 3 consecutive samples exceeds threshold.
 fn check_refinement_needed<E>(
     eval_fn: &E,
     t0: f64,
@@ -269,7 +236,6 @@ where
     false
 }
 
-/// Return nearest value in h array to target.
 fn nearest_h(hs: &[f64], target: f64) -> Option<&f64> {
     hs.iter().min_by(|a, b| {
         let da = (*a - target).abs();
@@ -278,7 +244,6 @@ fn nearest_h(hs: &[f64], target: f64) -> Option<&f64> {
     })
 }
 
-/// Check if direction change of 3 points exceeds angle threshold.
 fn needs_refinement(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], angle_threshold: f64) -> bool {
     let v01 = vec3::sub(p1, p0);
     let v12 = vec3::sub(p2, p1);
@@ -296,9 +261,6 @@ fn needs_refinement(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], angle_threshold: f
     angle > angle_threshold
 }
 
-/// Classify a sequence of points into branches by nearest-neighbor matching.
-///
-/// `char_len` scales the branch matching distance threshold.
 pub(crate) fn classify_branches(
     points: &[(f64, f64, [f64; 3])],
     theta_range: (f64, f64),
@@ -308,7 +270,6 @@ pub(crate) fn classify_branches(
         return vec![];
     }
 
-    // Group by theta
     let mut theta_groups: Vec<ThetaGroup> = Vec::new();
     for &(theta, h, pt) in points {
         match theta_groups.last_mut() {
@@ -321,17 +282,14 @@ pub(crate) fn classify_branches(
         }
     }
 
-    // Sort by theta
     theta_groups.sort_by(|a, b| a.0.total_cmp(&b.0));
 
-    // Branch tracing: nearest-neighbor matching at each theta step
     let mut branches: Vec<Vec<[f64; 3]>> = Vec::new();
     let mut branch_tips: Vec<[f64; 3]> = Vec::new();
 
     for (_theta, group) in &theta_groups {
         let mut used = vec![false; group.len()];
 
-        // Nearest-neighbor matching against existing branches
         for (bi, tip) in branch_tips.iter_mut().enumerate() {
             let mut best_idx = None;
             let mut best_dist = f64::MAX;
@@ -348,7 +306,6 @@ pub(crate) fn classify_branches(
             }
 
             if let Some(idx) = best_idx {
-                // Scale distance threshold by surface characteristic length (min 0.01)
                 let branch_tol = (char_len * 0.2).max(0.01);
                 if best_dist < branch_tol {
                     used[idx] = true;
@@ -359,7 +316,6 @@ pub(crate) fn classify_branches(
             }
         }
 
-        // Unassigned points start new branches
         for (gi, &(_, pt)) in group.iter().enumerate() {
             if !used[gi] {
                 branches.push(vec![pt]);
@@ -368,7 +324,6 @@ pub(crate) fn classify_branches(
         }
     }
 
-    // Detect closed curves: connect first and last points if theta is periodic
     let is_periodic = {
         let span = (theta_range.1 - theta_range.0).abs();
         (span - std::f64::consts::TAU).abs() < 1e-6
@@ -378,7 +333,6 @@ pub(crate) fn classify_branches(
         for branch in &mut branches {
             if branch.len() >= 3 {
                 let first = branch[0];
-                // len() >= 3 so last() is always Some
                 let last = *branch.last().unwrap();
                 if vec3::distance(first, last) < CLOSE_LOOP_TOL {
                     *branch.last_mut().unwrap() = first;
@@ -387,18 +341,12 @@ pub(crate) fn classify_branches(
         }
     }
 
-    // Remove branches with too few points
     branches.retain(|b| b.len() >= 2);
 
     branches
 }
 
-// ─── Core 2: sweep_spherical_intersection ────────────
-
-/// Spherical parameter sweep for surface intersection.
-///
-/// Parametrize as (theta, phi), apply Weierstrass substitution t = tan(phi/2),
-/// solve polynomial at each theta.
+/// 緯度に半角の正接による置換を適用し、南緯九十度から北緯九十度までの球面交線を追跡します。
 pub fn sweep_spherical_intersection<F, E>(
     phi_eq_fn: F,
     eval_fn: E,
@@ -414,7 +362,6 @@ where
     let dt = (t1 - t0) / n as f64;
     let phi_range = (-std::f64::consts::FRAC_PI_2, std::f64::consts::FRAC_PI_2);
 
-    // 1. Initial sampling: solve phi at each theta
     let mut samples: Vec<(f64, Vec<f64>)> = Vec::with_capacity(n + 1);
     for i in 0..=n {
         let theta = t0 + dt * i as f64;
@@ -422,10 +369,8 @@ where
         samples.push((theta, phis));
     }
 
-    // 2. Adaptive refinement
     adaptive_refine_spherical(&phi_eq_fn, &eval_fn, phi_range, &mut samples);
 
-    // 3. Point collection
     let mut raw_points: Vec<(f64, f64, [f64; 3])> = Vec::new();
     for (theta, phis) in &samples {
         for &phi in phis {
@@ -437,7 +382,6 @@ where
     classify_branches(&raw_points, theta_range, char_len)
 }
 
-/// Solve Weierstrass-substituted polynomial at theta, return valid phi values.
 fn solve_phi_at_theta<F>(phi_eq_fn: &F, theta: f64, phi_range: (f64, f64)) -> Vec<f64>
 where
     F: Fn(f64) -> Vec<f64>,
@@ -449,7 +393,6 @@ where
 
     let t_roots = solve_polynomial(&coeffs).expect("polynomial-highorder feature enabled");
 
-    // Inverse Weierstrass: t -> phi = 2 * atan(t)
     t_roots
         .into_iter()
         .filter_map(|t| {
@@ -463,7 +406,6 @@ where
         .collect()
 }
 
-/// Adaptive refinement for spherical sweep.
 fn adaptive_refine_spherical<F, E>(
     phi_eq_fn: &F,
     eval_fn: &E,
@@ -506,7 +448,6 @@ fn adaptive_refine_spherical<F, E>(
     }
 }
 
-/// Length of cylinder axis vector (= height).
 fn cyl_axis_length(surface: &Surface) -> f64 {
     match surface {
         Surface::Cylinder { axis, .. } => vec3::length(*axis),
@@ -514,7 +455,6 @@ fn cyl_axis_length(surface: &Surface) -> f64 {
     }
 }
 
-/// Convert polyline to Line segment sequence.
 fn polyline_to_line_segments(polyline: &[[f64; 3]]) -> Vec<Curve3D> {
     polyline
         .windows(2)
@@ -525,9 +465,6 @@ fn polyline_to_line_segments(polyline: &[[f64; 3]]) -> Vec<Curve3D> {
         .collect()
 }
 
-/// Clip sweep polylines to face boundaries and convert to Curve3D.
-///
-/// Skips clipping if faces have no edge loops.
 fn clip_or_convert_polylines(
     polylines: &[Vec<[f64; 3]>],
     face_a: &Face,
@@ -552,9 +489,6 @@ fn clip_or_convert_polylines(
     result
 }
 
-// ─── B1: Sphere × Cylinder ───────────────────────────────
-
-/// Sphere x Cylinder face intersection.
 pub(crate) fn sphere_cylinder_face_intersection(
     sphere_face: &Face,
     sphere_shell: &Shell,
@@ -610,9 +544,6 @@ pub(crate) fn sphere_cylinder_face_intersection(
     clip_or_convert_polylines(&polylines, sphere_face, sphere_shell, cyl_face, cyl_shell)
 }
 
-// ─── B4: Ellipsoid × Cylinder ────────────────────────────
-
-/// Ellipsoid x Cylinder face intersection.
 pub(crate) fn ellipsoid_cylinder_face_intersection(
     ellipsoid_face: &Face,
     ellipsoid_shell: &Shell,
@@ -643,7 +574,6 @@ pub(crate) fn ellipsoid_cylinder_face_intersection(
     let e2_comp = [e2[0], e2[1], e2[2]];
     let d_comp = [co[0] - ec[0], co[1] - ec[1], co[2] - ec[2]];
 
-    // alpha = sum(a_i^2/r_i^2) (constant)
     let alpha: f64 = (0..3).map(|i| a_comp[i] * a_comp[i] * inv_r2[i]).sum();
 
     let coeff_fn = |theta: f64| -> (f64, f64, f64) {
@@ -651,7 +581,7 @@ pub(crate) fn ellipsoid_cylinder_face_intersection(
         let sin_t = theta.sin();
 
         let mut beta = 0.0;
-        let mut gamma = -1.0; // -1 from implicit RHS
+        let mut gamma = -1.0;
         for i in 0..3 {
             let p_i = cr * (e1_comp[i] * cos_t + e2_comp[i] * sin_t) + d_comp[i];
             beta += a_comp[i] * p_i * inv_r2[i];
@@ -682,11 +612,6 @@ pub(crate) fn ellipsoid_cylinder_face_intersection(
     )
 }
 
-// ─── B7: Cylinder x Cylinder ───────────────────
-
-/// Cylinder x Cylinder face intersection.
-///
-/// Parallel/coaxial cases use analytic solutions; non-parallel uses sweep.
 pub(crate) fn cylinder_cylinder_face_intersection(
     cyl_a_face: &Face,
     cyl_a_shell: &Shell,
@@ -732,11 +657,9 @@ pub(crate) fn cylinder_cylinder_face_intersection(
         );
     }
 
-    // Non-parallel: parametrize Cylinder_A, substitute into Cylinder_B implicit
     let (e1, e2) = vec3::orthonormal_basis(aa);
     let h_len_a = cyl_axis_length(&cyl_a_face.surface);
 
-    // d = oa - ob
     let dv = vec3::sub(oa, ob);
 
     let d_cross_ab = vec3::cross(dv, ab);
@@ -772,7 +695,7 @@ pub(crate) fn cylinder_cylinder_face_intersection(
     clip_or_convert_polylines(&polylines, cyl_a_face, cyl_a_shell, cyl_b_face, cyl_b_shell)
 }
 
-/// Analytic intersection of two parallel cylinders.
+/// 平行な円柱を交差させます。軸が同一、半径方向に分離または一方が他方を包含、あるいは軸方向の重なりが許容差未満なら空を返します。
 #[allow(clippy::too_many_arguments)]
 fn cylinder_cylinder_parallel(
     oa: &[f64; 3],
@@ -791,17 +714,14 @@ fn cylinder_cylinder_parallel(
 ) -> Vec<Curve3D> {
     let tol = 1e-10;
 
-    // Coaxial
     if d < tol {
         return vec![];
     }
 
-    // Too far apart
     if d > ra + rb + tol {
         return vec![];
     }
 
-    // Containment (no intersection)
     if d < (ra - rb).abs() - tol {
         return vec![];
     }
@@ -812,7 +732,6 @@ fn cylinder_cylinder_parallel(
     let u = vec3::normalized(perp);
     let w = vec3::normalized(vec3::cross(*aa, u));
 
-    // Effective h range: axial overlap of two cylinders
     let h_min = 0.0_f64.max(-along);
     let h_max = h_len_a.min(h_len_b - along);
     if h_max - h_min < tol {
@@ -821,7 +740,6 @@ fn cylinder_cylinder_parallel(
 
     let mut lines = Vec::new();
 
-    // Circumscribed: 1 line
     if (d - (ra + rb)).abs() < tol || (d - (ra - rb).abs()).abs() < tol {
         let pt = vec3::add(*oa, vec3::scale(u, ra));
         let line = Curve3D::Line {
@@ -830,7 +748,6 @@ fn cylinder_cylinder_parallel(
         };
         lines.push(line);
     } else {
-        // 2 lines
         let x = (d * d + ra * ra - rb * rb) / (2.0 * d);
         let y_sq = ra * ra - x * x;
         if y_sq < 0.0 {
@@ -852,7 +769,6 @@ fn cylinder_cylinder_parallel(
         });
     }
 
-    // Clip to face boundaries
     let has_bounds = !face_a.loop_edges.is_empty() && !face_b.loop_edges.is_empty();
     if has_bounds {
         let mut result = Vec::new();
@@ -870,7 +786,6 @@ fn cylinder_cylinder_parallel(
     }
 }
 
-/// Length of cone axis vector (= h upper bound).
 fn cone_axis_length(surface: &Surface) -> f64 {
     match surface {
         Surface::Cone { axis, .. } => vec3::length(*axis),
@@ -878,9 +793,6 @@ fn cone_axis_length(surface: &Surface) -> f64 {
     }
 }
 
-// ─── B2: Sphere × Cone ──────────────────────────────────
-
-/// Sphere x Cone face intersection.
 pub(crate) fn sphere_cone_face_intersection(
     sphere_face: &Face,
     sphere_shell: &Shell,
@@ -909,7 +821,6 @@ pub(crate) fn sphere_cone_face_intersection(
     let cos_a = half_angle.cos();
     let sin_a = half_angle.sin();
 
-    // d = v - sc
     let d = vec3::sub(cv, sc);
     let d_a = vec3::dot(d, ca);
     let d_e1 = vec3::dot(d, e1);
@@ -942,9 +853,6 @@ pub(crate) fn sphere_cone_face_intersection(
     clip_or_convert_polylines(&polylines, sphere_face, sphere_shell, cone_face, cone_shell)
 }
 
-// ─── B5: Ellipsoid × Cone ───────────────────────────────
-
-/// Ellipsoid x Cone face intersection.
 pub(crate) fn ellipsoid_cone_face_intersection(
     ellipsoid_face: &Face,
     ellipsoid_shell: &Shell,
@@ -985,7 +893,7 @@ pub(crate) fn ellipsoid_cone_face_intersection(
 
         let mut alpha_coeff = 0.0;
         let mut beta = 0.0;
-        let mut gamma = -1.0; // Implicit RHS
+        let mut gamma = -1.0;
         for i in 0..3 {
             let q_i = cos_a * a_comp[i] + sin_a * (e1_comp[i] * cos_t + e2_comp[i] * sin_t);
             alpha_coeff += q_i * q_i * inv_r2[i];
@@ -1018,9 +926,6 @@ pub(crate) fn ellipsoid_cone_face_intersection(
     )
 }
 
-// ─── B8: Cylinder × Cone ────────────────────────────────
-
-/// Cylinder x Cone face intersection.
 pub(crate) fn cylinder_cone_face_intersection(
     cyl_face: &Face,
     cyl_shell: &Shell,
@@ -1097,9 +1002,7 @@ pub(crate) fn cylinder_cone_face_intersection(
     clip_or_convert_polylines(&polylines, cyl_face, cyl_shell, cone_face, cone_shell)
 }
 
-// ─── B9: Cone × Cone ────────────────────────────────────
-
-/// Cone x Cone face intersection.
+/// 同軸の円錐は空を返します。交線は円錐 B の頂点から軸正方向の半空間に限定します。
 pub(crate) fn cone_cone_face_intersection(
     cone_a_face: &Face,
     cone_a_shell: &Shell,
@@ -1131,7 +1034,6 @@ pub(crate) fn cone_cone_face_intersection(
         .min(vec3::length(ca_b_raw).max(1.0));
     let h_len_a = cone_axis_length(&cone_a_face.surface);
 
-    // Coaxial check
     let dot_ab = vec3::dot(ca_a, ca_b).abs();
     if dot_ab > 1.0 - 1e-10 {
         let diff = vec3::sub(vb, va);
@@ -1199,10 +1101,8 @@ pub(crate) fn cone_cone_face_intersection(
 
     let h_bounds = |_theta: f64| -> (f64, f64) { (0.0, h_len_a) };
 
-    // Filter by Cone_B half-space: (x - v_B) * a_B >= 0
     let polylines = sweep_quadric_intersection(coeff_fn, eval_fn, (0.0, TAU), h_bounds, char_len);
 
-    // Keep only points in Cone_B half-space
     let filtered: Vec<Vec<[f64; 3]>> = polylines
         .into_iter()
         .flat_map(|pl| {
@@ -1234,9 +1134,6 @@ pub(crate) fn cone_cone_face_intersection(
     )
 }
 
-// ─── B3: Sphere × Ellipsoid ─────────────────────────────
-
-/// Sphere x Ellipsoid face intersection.
 pub(crate) fn sphere_ellipsoid_face_intersection(
     sphere_face: &Face,
     sphere_shell: &Shell,
@@ -1300,9 +1197,6 @@ pub(crate) fn sphere_ellipsoid_face_intersection(
     )
 }
 
-// ─── B6: Ellipsoid × Ellipsoid ──────────────────────────
-
-/// Ellipsoid x Ellipsoid face intersection.
 pub(crate) fn ellipsoid_ellipsoid_face_intersection(
     ellipsoid_a_face: &Face,
     ellipsoid_a_shell: &Shell,
@@ -1371,12 +1265,9 @@ pub(crate) fn ellipsoid_ellipsoid_face_intersection(
     )
 }
 
-// ─── Core 3: sweep_torus_intersection ─────────────────
-
-/// Shift to avoid Weierstrass singularity at phi = +/-pi
 const WEIERSTRASS_EPS: f64 = 0.01;
 
-/// Torus parameter sweep for surface intersection.
+/// 半角の正接が特異になる正負百八十度を主区間から除き、その近傍を直接調べてトーラスの交線を補います。
 pub fn sweep_torus_intersection<F, E>(
     phi_eq_fn: F,
     eval_fn: E,
@@ -1393,7 +1284,6 @@ where
     let pi = std::f64::consts::PI;
     let phi_main = (-pi + WEIERSTRASS_EPS, pi - WEIERSTRASS_EPS);
 
-    // 1. Main interval: initial sampling
     let mut samples: Vec<(f64, Vec<f64>)> = Vec::with_capacity(n + 1);
     for i in 0..=n {
         let theta = t0 + dt * i as f64;
@@ -1401,10 +1291,8 @@ where
         samples.push((theta, phis));
     }
 
-    // 2. Main interval: adaptive refinement
     adaptive_refine_torus(&phi_eq_fn, &eval_fn, phi_main, &mut samples);
 
-    // 3. Complement: direct sampling near phi ~ +/-pi
     let complement_phis = [
         -pi,
         -pi + WEIERSTRASS_EPS * 0.25,
@@ -1443,7 +1331,6 @@ where
         sample.1.sort_by(|a, b| a.total_cmp(b));
     }
 
-    // 4. Point collection
     let mut raw_points: Vec<(f64, f64, [f64; 3])> = Vec::new();
     for (theta, phis) in &samples {
         for &phi in phis {
@@ -1455,7 +1342,6 @@ where
     classify_branches(&raw_points, theta_range, char_len)
 }
 
-/// Polynomial evaluation: coeffs[0] + coeffs[1]*t + coeffs[2]*t^2 + ...
 fn eval_poly(coeffs: &[f64], t: f64) -> f64 {
     let mut result = 0.0;
     let mut t_pow = 1.0;
@@ -1466,7 +1352,6 @@ fn eval_poly(coeffs: &[f64], t: f64) -> f64 {
     result
 }
 
-/// Solve Weierstrass polynomial for torus at theta, return valid phi in [-pi, pi].
 fn solve_phi_at_theta_torus<F>(phi_eq_fn: &F, theta: f64, phi_range: (f64, f64)) -> Vec<f64>
 where
     F: Fn(f64) -> Vec<f64>,
@@ -1502,7 +1387,6 @@ where
         .collect()
 }
 
-/// Adaptive refinement for torus sweep.
 fn adaptive_refine_torus<F, E>(
     phi_eq_fn: &F,
     eval_fn: &E,
@@ -1550,9 +1434,6 @@ fn adaptive_refine_torus<F, E>(
     }
 }
 
-// ─── Sphere × Torus ─────────────────────────────────────
-
-/// Sphere x Torus face intersection.
 pub(crate) fn sphere_torus_face_intersection(
     sphere_face: &Face,
     sphere_shell: &Shell,
@@ -1624,9 +1505,6 @@ pub(crate) fn sphere_torus_face_intersection(
     )
 }
 
-// ─── Cylinder × Torus ───────────────────────────────────
-
-/// Cylinder x Torus face intersection.
 pub(crate) fn cylinder_torus_face_intersection(
     cyl_face: &Face,
     cyl_shell: &Shell,
@@ -1714,9 +1592,6 @@ pub(crate) fn cylinder_torus_face_intersection(
     clip_or_convert_polylines(&polylines, cyl_face, cyl_shell, torus_face, torus_shell)
 }
 
-// ─── Cone × Torus ───────────────────────────────────────
-
-/// Cone x Torus face intersection.
 pub(crate) fn cone_torus_face_intersection(
     cone_face: &Face,
     cone_shell: &Shell,
@@ -1814,9 +1689,6 @@ pub(crate) fn cone_torus_face_intersection(
     clip_or_convert_polylines(&polylines, cone_face, cone_shell, torus_face, torus_shell)
 }
 
-// ─── Ellipsoid × Torus ──────────────────────────────────
-
-/// Ellipsoid x Torus face intersection.
 pub(crate) fn ellipsoid_torus_face_intersection(
     ellipsoid_face: &Face,
     ellipsoid_shell: &Shell,
@@ -1915,9 +1787,7 @@ pub(crate) fn ellipsoid_torus_face_intersection(
     )
 }
 
-// ─── Torus × Torus ─────────────────────────────────────
-
-/// Torus x Torus face intersection.
+/// 中心間距離が包囲半径の和を許容差分超える場合は空を返します。
 pub(crate) fn torus_torus_face_intersection(
     torus_a_face: &Face,
     torus_a_shell: &Shell,
@@ -1944,7 +1814,6 @@ pub(crate) fn torus_torus_face_intersection(
         _ => return vec![],
     };
 
-    // Early return via bounding spheres
     let dist = vec3::length(vec3::sub(a_center, b_center));
     let bound_a = a_big_r + a_little_r;
     let bound_b = b_big_r + b_little_r;
@@ -2087,8 +1956,6 @@ pub(crate) fn torus_torus_face_intersection(
         torus_b_shell,
     )
 }
-
-// ─── Tests ──────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

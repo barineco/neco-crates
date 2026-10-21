@@ -14,6 +14,13 @@ The degree matrix provides the mass matrix for a generalized eigenvalue problem.
 
 Unweighted adjacency lists can use spectral bisection, Kernighan-Lin refinement, and recursive partitioning.
 
+Exact adjacency clustering uses these public values:
+
+- `ExactSpectralRequest`: exact adjacency, input identity, input revision, and projection policy
+- `ClusteringAdjacency`: projection purpose
+- `spectral_cluster_exact`: one certified numerical projection and one clustering result
+- `SpectralProjectionReference`: the retained input and projection correspondence
+
 ## Usage
 
 ### Cluster a symmetric graph
@@ -72,6 +79,9 @@ for row in result.embedding() {
 
 - Clustering:
   - `spectral_cluster`
+  - `spectral_cluster_exact`
+  - `ExactSpectralRequest`
+  - `SpectralProjectionReference`
   - `SpectralResult::assignments()`
   - `SpectralResult::cluster_count()`
   - `SpectralResult::embedding()`
@@ -86,6 +96,7 @@ for row in result.embedding() {
 
 ```text
 spectral_cluster(adjacency, cluster_count, eigensolve_config, max_kmeans_iterations)
+spectral_cluster_exact(exact_request)
 ```
 
 ## Preconditions

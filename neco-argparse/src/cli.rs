@@ -3,31 +3,23 @@ use neco_json::JsonValue;
 use crate::args::CommandMeta;
 use crate::error::ArgParseError;
 
-/// CLI パース結果
+/// コマンド行の解析結果です。
 #[derive(Debug)]
 pub struct CliParsed {
-    /// サブコマンド名
+    /// コマンド名です。
     pub command: String,
-    /// パラメータ（JsonValue::Object）
+    /// 長いオプション名または短いオプションから解決した名前をキーとし、位置引数を `_positional` に格納する JSON オブジェクトです。
     pub params: JsonValue,
-    /// `--help` / `-h` が指定されたかどうか
+    /// `--help` または `-h` が指定されたことを示します。
     pub help_requested: bool,
 }
 
-/// CLI 引数をパースし、サブコマンド名と JsonValue パラメータに分解する。
+/// コマンド行を解析します。
 ///
-/// - `metas`: 登録済みコマンドの CommandMeta 一覧（短縮フラグの解決に使用）
-///
-/// パース規則:
-/// - 最初の非フラグ引数がサブコマンド名
-/// - `--key value` / `--key=value` → `{ "key": "value" }`
-/// - `-k value` → CommandMeta の ArgDef.short から long name を解決して `{ "long_name": "value" }`
-/// - 残りの位置引数 → `_positional` 配列
-/// - `--help` / `-h` → `help_requested = true`
+/// 長いオプションは等号または後続値を受け取り、単独なら真偽値になります。短いオプションは登録情報から長い名前を解決します。残りの引数は `_positional` 配列へ格納します。コマンド名がない入力は失敗します。
 pub fn parse_cli_args(args: &[String], metas: &[CommandMeta]) -> Result<CliParsed, ArgParseError> {
     let mut iter = args.iter().peekable();
 
-    // サブコマンド名を探す（最初の非フラグ引数）
     let command = loop {
         match iter.next() {
             None => {
@@ -36,13 +28,10 @@ pub fn parse_cli_args(args: &[String], metas: &[CommandMeta]) -> Result<CliParse
                 ));
             }
             Some(arg) if !arg.starts_with('-') => break arg.clone(),
-            Some(_) => {
-                // サブコマンドより前のフラグは無視する（--help 等は後段で処理）
-            }
+            Some(_) => {}
         }
     };
 
-    // サブコマンドに対応する CommandMeta を探す（短縮フラグ解決に使用）
     let meta = metas.iter().find(|m| m.name == command);
 
     let mut fields: Vec<(String, JsonValue)> = Vec::new();
@@ -56,29 +45,24 @@ pub fn parse_cli_args(args: &[String], metas: &[CommandMeta]) -> Result<CliParse
         }
 
         if let Some(rest) = arg.strip_prefix("--") {
-            // --key=value または --key value
             if let Some(eq_pos) = rest.find('=') {
                 let key = rest[..eq_pos].to_string();
                 let val = rest[eq_pos + 1..].to_string();
                 fields.push((key, JsonValue::String(val)));
             } else {
                 let key = rest.to_string();
-                // 次のトークンが値（フラグでなければ）
                 let val = if iter.peek().map(|s| !s.starts_with('-')).unwrap_or(false) {
                     iter.next().unwrap().clone()
                 } else {
-                    // 値なし → boolean フラグとして true
                     fields.push((key, JsonValue::Bool(true)));
                     continue;
                 };
                 fields.push((key, JsonValue::String(val)));
             }
         } else if let Some(short_rest) = arg.strip_prefix('-') {
-            // -k value（単一文字）
             let chars: Vec<char> = short_rest.chars().collect();
             if chars.len() == 1 {
                 let short_char = chars[0];
-                // CommandMeta から long name を解決
                 let long_name = meta
                     .and_then(|m| {
                         m.args
@@ -96,11 +80,9 @@ pub fn parse_cli_args(args: &[String], metas: &[CommandMeta]) -> Result<CliParse
                 };
                 fields.push((long_name, JsonValue::String(val)));
             } else {
-                // 複数文字の短縮フラグ（-abc など）は位置引数として扱う
                 positional.push(JsonValue::String(arg.clone()));
             }
         } else {
-            // 位置引数
             positional.push(JsonValue::String(arg.clone()));
         }
     }
@@ -235,8 +217,6 @@ mod tests {
 
     #[test]
     fn test_mixed_flags_and_positional() {
-        // --stat が bool フラグ（次トークンは別の -- フラグではなく値として解釈される）
-        // positional は -- フラグの後ろにない引数
         let args = vec![s("diff"), s("abc123"), s("def456"), s("--stat")];
         let result = parse_cli_args(&args, &no_metas()).unwrap();
         assert_eq!(result.command, "diff");

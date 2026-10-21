@@ -1,29 +1,13 @@
-//! Generic ID-bearing tree with cursor-based navigation.
+//! 一意な識別子を持つ根付き木と、カーソルによる走査を提供する。
 //!
-//! This crate provides two main types:
-//!
-//! - [`Tree<T>`] stores a rooted multi-way tree where every node carries a
-//!   unique `u64` id and a user-defined value of type `T`.  An internal
-//!   `HashMap` index makes id-based lookup O(1).
-//! - [`CursoredTree<T>`] wraps a `Tree<T>` and tracks a *current position*
-//!   via an index path from the root.  Navigation helpers (`go_parent`,
-//!   `go_child`, `push`, ...) update the cursor atomically.
-//!
-//! Pruning, subtree removal, DFS iteration, and flat-list conversion are
-//! available on both types.
+//! `Tree` は挿入順の子を保持し、識別子からノードを検索する。`CursoredTree` は木と現在位置を保持する。
 
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
-// ---------------------------------------------------------------------------
-// Node
-// ---------------------------------------------------------------------------
-
-/// Single node in the tree.
-///
-/// Fields are private.  Use the accessor methods to read or mutate them.
+/// 木のノード。フィールドは private であり、アクセサメソッドで参照または変更する。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node<T> {
     id: u64,
@@ -42,58 +26,53 @@ impl<T> Node<T> {
         }
     }
 
-    /// Unique identifier assigned at creation time.
+    /// 作成時に割り当てる一意な識別子を返す。
     pub fn id(&self) -> u64 {
         self.id
     }
 
-    /// Distance from the root (root = 0).
+    /// 根を 0 とする深さを返す。
     pub fn depth(&self) -> usize {
         self.depth
     }
 
-    /// Immutable reference to the stored value.
+    /// 格納値への不変参照を返す。
     pub fn value(&self) -> &T {
         &self.value
     }
 
-    /// Mutable reference to the stored value.
+    /// 格納値への可変参照を返す。
     pub fn value_mut(&mut self) -> &mut T {
         &mut self.value
     }
 
-    /// Child nodes in insertion order.
+    /// 挿入順の子ノードを返す。
     pub fn children(&self) -> &[Node<T>] {
         &self.children
     }
 
-    /// Mutable access to the children vector.
+    /// 子ノード列への可変参照を返す。
     pub fn children_mut(&mut self) -> &mut Vec<Node<T>> {
         &mut self.children
     }
 
-    /// Number of direct children.
+    /// 直接の子ノード数を返す。
     pub fn child_count(&self) -> usize {
         self.children.len()
     }
 
-    /// `true` when the node has no children.
+    /// 子ノードがなければ `true` を返す。
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
 }
 
-// ---------------------------------------------------------------------------
-// ParentNotFound
-// ---------------------------------------------------------------------------
-
-/// Error returned by [`Tree::push_child`] when the specified parent id does
-/// not exist in the tree.
+/// [`Tree::push_child`] の親識別子が木にない場合のエラー。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParentNotFound(u64);
 
 impl ParentNotFound {
-    /// The parent id that was not found.
+    /// 見つからなかった親識別子を返す。
     pub fn parent_id(&self) -> u64 {
         self.0
     }
@@ -107,29 +86,16 @@ impl fmt::Display for ParentNotFound {
 
 impl Error for ParentNotFound {}
 
-// ---------------------------------------------------------------------------
-// PrunePolicy
-// ---------------------------------------------------------------------------
-
-/// Policy for [`Tree::prune`].
+/// [`Tree::prune`] の間引き方法。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrunePolicy {
-    /// Keep the newest `n` children per node, dropping older ones.
+    /// 各ノードで新しい `n` 個の子を残す。
     KeepLastN(usize),
-    /// Remove all nodes at depth >= `limit`.
+    /// 深さが `limit` 以上のノードを取り除く。
     KeepDepthUnder(usize),
 }
 
-// ---------------------------------------------------------------------------
-// Tree
-// ---------------------------------------------------------------------------
-
-/// Rooted multi-way tree with O(1) id lookup.
-///
-/// Every node has a unique auto-incrementing `u64` id (root = 0).
-/// An internal `HashMap<u64, Vec<usize>>` maps each id to its path
-/// (sequence of child indices from the root), so [`find`](Self::find) and
-/// [`find_path_to`](Self::find_path_to) are O(1) amortised.
+/// 一意な `u64` 識別子を持つ根付き多分木。根の識別子は 0 である。識別子から経路を引く処理は償却 O(1) であり、ノード参照はその経路の深さに比例する。
 #[derive(Debug, Clone)]
 pub struct Tree<T> {
     root: Node<T>,
@@ -138,7 +104,7 @@ pub struct Tree<T> {
 }
 
 impl<T> Tree<T> {
-    /// Create a tree with a single root node (id = 0).
+    /// 識別子 0 の根ノードだけを持つ木を作る。
     pub fn new(root_value: T) -> Self {
         let root = Node::new(0, 0, root_value);
         let mut index = HashMap::new();
@@ -150,25 +116,24 @@ impl<T> Tree<T> {
         }
     }
 
-    /// Reference to the root node.
+    /// 根ノードへの不変参照を返す。
     pub fn root(&self) -> &Node<T> {
         &self.root
     }
 
-    /// Mutable reference to the root node.
+    /// 根ノードへの可変参照を返す。
     pub fn root_mut(&mut self) -> &mut Node<T> {
         &mut self.root
     }
 
-    /// The id that will be assigned to the next inserted node.
+    /// 次に挿入するノードの識別子を返す。
     pub fn next_id(&self) -> u64 {
         self.next_id
     }
 
-    /// Append a child to the node identified by `parent_id`.
-    ///
-    /// Returns the newly assigned id, or [`ParentNotFound`] when
-    /// `parent_id` does not exist in the tree.
+    /// `parent_id` で識別されるノードに子を追加する。
+    /// 割り当てた識別子を返し、`parent_id` が木にない場合は
+    /// [`ParentNotFound`] を返す。
     pub fn push_child(&mut self, parent_id: u64, value: T) -> Result<u64, ParentNotFound> {
         let parent_path = self
             .index
@@ -200,44 +165,42 @@ impl<T> Tree<T> {
         Ok(child_id)
     }
 
-    /// Look up a node by id.  O(1) amortised.
+    /// 識別子からノードを返す。存在しない場合は `None` を返す。
     pub fn find(&self, id: u64) -> Option<&Node<T>> {
         let path = self.index.get(&id)?;
         self.node_at_path(path)
     }
 
-    /// Mutable look up by id.  O(1) amortised.
+    /// 識別子からノードへの可変参照を返す。存在しない場合は `None` を返す。
     pub fn find_mut(&mut self, id: u64) -> Option<&mut Node<T>> {
         let path = self.index.get(&id)?.clone();
         self.node_mut_at_path(&path)
     }
 
-    /// Return the index path from the root to the given id.  O(1) amortised.
+    /// 根から識別子までの子インデックス列を返す。存在しない場合は `None` を返す。
     pub fn find_path_to(&self, id: u64) -> Option<Vec<usize>> {
         self.index.get(&id).cloned()
     }
 
-    /// Depth-first iterator yielding `(depth, &Node<T>)` pairs.
+    /// 深さ優先順の `(深さ, ノード)` を返す反復子を作る。
     pub fn dfs(&self) -> DfsIter<'_, T> {
         DfsIter {
             stack: vec![(0, &self.root)],
         }
     }
 
-    /// Collect [`dfs`](Self::dfs) into a `Vec`.
+    /// [`dfs`](Self::dfs) の要素を `Vec` に集める。
     pub fn flatten(&self) -> Vec<(usize, &Node<T>)> {
         self.dfs().collect()
     }
 
-    /// Remove a subtree rooted at `id` and return its root node.
-    ///
-    /// Returns `None` when `id` is the tree root (cannot remove) or does not
-    /// exist.  Remaining sibling indices are compacted and the internal index
-    /// is rebuilt.
+    /// `id` を根とする部分木を削除し、その根ノードを返す。
+    /// 根は削除できず、存在しない識別子の場合も `None` を返す。
+    /// 残った兄弟のインデックスを詰め、内部インデックスを再構築する。
     pub fn remove_subtree(&mut self, id: u64) -> Option<Node<T>> {
         let path = self.find_path_to(id)?;
         if path.is_empty() {
-            return None; // root
+            return None;
         }
         let mut parent_path = path;
         let child_index = parent_path.pop()?;
@@ -247,11 +210,9 @@ impl<T> Tree<T> {
         Some(removed)
     }
 
-    /// Apply a pruning policy to the entire tree.
-    ///
-    /// The internal index is rebuilt after pruning.  No nodes are protected:
-    /// if you need to preserve a specific path (e.g. the current cursor),
-    /// use [`CursoredTree::prune`] which automatically repairs the cursor.
+    /// 木全体に間引き方法を適用する。
+    /// 間引き後に内部インデックスを再構築する。ノードは保護しないため、
+    /// カーソルなど特定の経路を維持する場合は [`CursoredTree::prune`] を使う。
     pub fn prune(&mut self, policy: PrunePolicy) {
         match policy {
             PrunePolicy::KeepLastN(n) => Self::prune_keep_last_n(&mut self.root, n),
@@ -259,8 +220,6 @@ impl<T> Tree<T> {
         }
         self.rebuild_index();
     }
-
-    // -- internal helpers ---------------------------------------------------
 
     fn node_at_path(&self, path: &[usize]) -> Option<&Node<T>> {
         let mut node = &self.root;
@@ -321,13 +280,7 @@ impl<T> Tree<T> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DfsIter
-// ---------------------------------------------------------------------------
-
-/// Depth-first iterator over `(depth, &Node<T>)` pairs.
-///
-/// Created by [`Tree::dfs`].
+/// [`Tree::dfs`] が作る深さ優先反復子。
 pub struct DfsIter<'a, T> {
     stack: Vec<(usize, &'a Node<T>)>,
 }
@@ -344,19 +297,7 @@ impl<'a, T> Iterator for DfsIter<'a, T> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// CursoredTree
-// ---------------------------------------------------------------------------
-
-/// Tree with a movable cursor that tracks the current position.
-///
-/// Wraps a [`Tree<T>`] and maintains a cursor as a `Vec<usize>` path from
-/// the root.  Navigation methods return `bool` to indicate whether the move
-/// succeeded; the cursor is never left in an invalid state.
-///
-/// `CursoredTree<T>` implements `Deref<Target = Tree<T>>`, so all read-only
-/// `Tree` methods are available directly.  For mutation through the inner
-/// tree, use [`tree_mut`](Self::tree_mut).
+/// 現在位置を根からの子インデックス列として保持する木。移動操作は成功時に `true` を返し、カーソルは有効なノードを指し続ける。
 #[derive(Debug, Clone)]
 pub struct CursoredTree<T> {
     tree: Tree<T>,
@@ -364,7 +305,7 @@ pub struct CursoredTree<T> {
 }
 
 impl<T> CursoredTree<T> {
-    /// Create a new tree with a single root node.  The cursor starts at root.
+    /// 根ノードだけを持つ木を作り、カーソルを根に置く。
     pub fn new(root_value: T) -> Self {
         Self {
             tree: Tree::new(root_value),
@@ -372,26 +313,24 @@ impl<T> CursoredTree<T> {
         }
     }
 
-    // -- cursor read --------------------------------------------------------
-
-    /// Index path from the root to the current node.
+    /// 根から現在のノードまでの子インデックス列を返す。
     pub fn cursor_path(&self) -> &[usize] {
         &self.cursor
     }
 
-    /// Alias for [`cursor_path`](Self::cursor_path).
+    /// [`cursor_path`](Self::cursor_path) の別名。
     pub fn cursor(&self) -> &[usize] {
         &self.cursor
     }
 
-    /// Reference to the node at the cursor.
+    /// カーソル位置のノードへの不変参照を返す。
     pub fn current(&self) -> &Node<T> {
         self.tree
             .node_at_path(&self.cursor)
             .expect("cursor points to existing node")
     }
 
-    /// Mutable reference to the node at the cursor.
+    /// カーソル位置のノードへの可変参照を返す。
     pub fn current_mut(&mut self) -> &mut Node<T> {
         let path = self.cursor.clone();
         self.tree
@@ -399,26 +338,23 @@ impl<T> CursoredTree<T> {
             .expect("cursor points to existing node")
     }
 
-    /// Id of the node at the cursor.
+    /// カーソル位置のノードの識別子を返す。
     pub fn current_id(&self) -> u64 {
         self.current().id()
     }
 
-    /// `true` when the cursor is not at the root.
+    /// カーソルが根にない場合に `true` を返す。
     pub fn has_parent(&self) -> bool {
         !self.cursor.is_empty()
     }
 
-    /// `true` when the current node has at least one child.
+    /// 現在のノードに子があれば `true` を返す。
     pub fn has_children(&self) -> bool {
         !self.current().is_leaf()
     }
 
-    // -- cursor mutation ----------------------------------------------------
-
-    /// Add a child to the current node and move the cursor to it.
-    ///
-    /// Always succeeds because the parent is the current node.
+    /// 現在のノードに子を追加し、カーソルを追加した子へ移動する。
+    /// 現在のノードが親であるため、常に成功する。
     pub fn push(&mut self, value: T) -> u64 {
         let parent_id = self.current().id();
         let child_id = self
@@ -430,13 +366,12 @@ impl<T> CursoredTree<T> {
         child_id
     }
 
-    /// Move the cursor to the parent.  Returns `false` at the root.
+    /// カーソルを親へ移動する。根にいる場合は `false` を返す。
     pub fn go_parent(&mut self) -> bool {
         self.cursor.pop().is_some()
     }
 
-    /// Move the cursor to the child at `index`.  Returns `false` if out of
-    /// bounds.
+    /// カーソルを `index` 番目の子へ移動する。範囲外の場合は `false` を返す。
     pub fn go_child(&mut self, index: usize) -> bool {
         if self.current().children().get(index).is_none() {
             return false;
@@ -445,8 +380,7 @@ impl<T> CursoredTree<T> {
         true
     }
 
-    /// Move the cursor to the last (newest) child.  Returns `false` when
-    /// there are no children.
+    /// カーソルを最後の子 ( 最も新しい子 ) へ移動する。子がない場合は `false` を返す。
     pub fn go_child_last(&mut self) -> bool {
         let count = self.current().child_count();
         if count == 0 {
@@ -456,8 +390,7 @@ impl<T> CursoredTree<T> {
         true
     }
 
-    /// Move the cursor to the next sibling.  Returns `false` when there is
-    /// no next sibling or the cursor is at the root.
+    /// カーソルを次の兄弟へ移動する。次の兄弟がない場合や根にいる場合は `false` を返す。
     pub fn go_sibling_next(&mut self) -> bool {
         let Some(current_index) = self.cursor.last().copied() else {
             return false;
@@ -476,8 +409,7 @@ impl<T> CursoredTree<T> {
         true
     }
 
-    /// Move the cursor to the previous sibling.  Returns `false` when there
-    /// is no previous sibling or the cursor is at the root.
+    /// カーソルを前の兄弟へ移動する。前の兄弟がない場合や根にいる場合は `false` を返す。
     pub fn go_sibling_prev(&mut self) -> bool {
         let Some(last) = self.cursor.last_mut() else {
             return false;
@@ -489,8 +421,7 @@ impl<T> CursoredTree<T> {
         true
     }
 
-    /// Jump the cursor to the node with the given id.  Returns `false` when
-    /// the id does not exist.
+    /// 指定した識別子のノードへカーソルを移動する。識別子がない場合は `false` を返す。
     pub fn go_to(&mut self, id: u64) -> bool {
         match self.tree.find_path_to(id) {
             Some(path) => {
@@ -501,7 +432,7 @@ impl<T> CursoredTree<T> {
         }
     }
 
-    /// Move the cursor back to the root.  Returns `false` if already there.
+    /// カーソルを根へ戻す。すでに根にいる場合は `false` を返す。
     pub fn go_root(&mut self) -> bool {
         if self.cursor.is_empty() {
             return false;
@@ -510,26 +441,20 @@ impl<T> CursoredTree<T> {
         true
     }
 
-    // -- delegated tree mutations -------------------------------------------
-
-    /// Append a child to the node identified by `parent_id`.
-    ///
-    /// The cursor is not moved.  See [`push`](Self::push) for the
-    /// push-and-move variant.
+    /// `parent_id` で識別されるノードに子を追加する。カーソルは移動しない。
+    /// 子の追加後にカーソルを移動する場合は [`push`](Self::push) を使う。
     pub fn push_child(&mut self, parent_id: u64, value: T) -> Result<u64, ParentNotFound> {
         self.tree.push_child(parent_id, value)
     }
 
-    /// Remove a subtree.  If the cursor was inside the removed subtree, it is
-    /// repaired to the nearest surviving ancestor.
+    /// 部分木を削除する。カーソルが削除対象の内部にあれば、残った最も近い祖先へ戻す。
     pub fn remove_subtree(&mut self, id: u64) -> Option<Node<T>> {
         let removed = self.tree.remove_subtree(id);
         self.repair_cursor();
         removed
     }
 
-    /// Prune the tree.  If the cursor was on a pruned node, it is repaired to
-    /// the nearest surviving ancestor.
+    /// 木を間引く。カーソルが間引かれたノードにあれば、残った最も近い祖先へ戻す。
     pub fn prune(&mut self, policy: PrunePolicy) {
         let current_id = self.current().id();
         self.tree.prune(policy);
@@ -540,22 +465,17 @@ impl<T> CursoredTree<T> {
         }
     }
 
-    // -- inner tree access --------------------------------------------------
-
-    /// Immutable reference to the inner [`Tree`].
+    /// 内部の [`Tree`] への不変参照を返す。
     pub fn tree(&self) -> &Tree<T> {
         &self.tree
     }
 
-    /// Mutable reference to the inner [`Tree`].
-    ///
-    /// Use with care: structural changes may invalidate the cursor.  Call
-    /// methods on `CursoredTree` instead when possible.
+    /// 内部の [`Tree`] への可変参照を返す。
+    /// 構造を変更するとカーソルが無効になる場合があるため、可能なら
+    /// `CursoredTree` のメソッドを使う。
     pub fn tree_mut(&mut self) -> &mut Tree<T> {
         &mut self.tree
     }
-
-    // -- private ------------------------------------------------------------
 
     fn repair_cursor(&mut self) {
         while self.tree.node_at_path(&self.cursor).is_none() {
@@ -574,15 +494,9 @@ impl<T> Deref for CursoredTree<T> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // -- Tree ---------------------------------------------------------------
 
     #[test]
     fn tree_new_creates_root_with_id_zero() {
@@ -672,7 +586,6 @@ mod tests {
         let removed = tree.remove_subtree(b).unwrap();
         assert_eq!(removed.id(), b);
         assert!(tree.find(b).is_none());
-        // c was at index 2, now compacted to index 1
         assert_eq!(tree.find_path_to(c), Some(vec![1]));
         assert_eq!(tree.root().children().len(), 2);
         assert_eq!(tree.root().children()[0].id(), a);
@@ -724,8 +637,6 @@ mod tests {
         assert!(tree.find(a1).is_none());
     }
 
-    // -- CursoredTree -------------------------------------------------------
-
     #[test]
     fn cursored_push_adds_child_and_moves_cursor() {
         let mut ct = CursoredTree::new("root");
@@ -760,7 +671,7 @@ mod tests {
         assert_eq!(ct.current_id(), b);
         assert!(ct.go_child_last());
         assert_eq!(ct.current_id(), b1);
-        assert!(!ct.go_child_last()); // leaf
+        assert!(!ct.go_child_last());
     }
 
     #[test]
@@ -784,14 +695,14 @@ mod tests {
         let b = ct.push_child(0, "b").unwrap();
         ct.push_child(0, "c").unwrap();
 
-        assert!(ct.go_child(1)); // b
+        assert!(ct.go_child(1));
         assert_eq!(ct.current_id(), b);
-        assert!(ct.go_sibling_next()); // c
-        assert!(!ct.go_sibling_next()); // end
-        assert!(ct.go_sibling_prev()); // b
+        assert!(ct.go_sibling_next());
+        assert!(!ct.go_sibling_next());
+        assert!(ct.go_sibling_prev());
         assert_eq!(ct.current_id(), b);
-        assert!(ct.go_sibling_prev()); // a
-        assert!(!ct.go_sibling_prev()); // start
+        assert!(ct.go_sibling_prev());
+        assert!(!ct.go_sibling_prev());
     }
 
     #[test]
@@ -826,7 +737,7 @@ mod tests {
         ct.push_child(a, "a1").unwrap();
 
         assert!(ct.go_child(0));
-        assert!(ct.go_child(0)); // a1
+        assert!(ct.go_child(0));
         ct.prune(PrunePolicy::KeepDepthUnder(2));
         assert_eq!(ct.current_id(), a);
         assert_eq!(ct.cursor(), &[0]);
@@ -838,7 +749,7 @@ mod tests {
         let a = ct.push_child(0, "a").unwrap();
         let b = ct.push_child(0, "b").unwrap();
 
-        assert!(ct.go_child(1)); // b
+        assert!(ct.go_child(1));
         let removed = ct.remove_subtree(b).unwrap();
         assert_eq!(removed.id(), b);
         assert_eq!(ct.current_id(), 0);
@@ -857,7 +768,6 @@ mod tests {
     #[test]
     fn deref_exposes_tree_methods() {
         let ct = CursoredTree::new("root");
-        // Through Deref we can call Tree::root, Tree::find, etc.
         assert_eq!(ct.root().id(), 0);
         assert!(ct.find(0).is_some());
     }
